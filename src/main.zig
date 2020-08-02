@@ -12,7 +12,7 @@ pub fn main() anyerror!void {
 
     var tokens = try tokenize(allocator, code);
 
-    for (tokens) |token| std.debug.print("{}\n", .{token});
+    // for (tokens) |token| std.debug.print("{}\n", .{token});
 
     var assembly = try assemble(allocator, tokens);
     // std.debug.print("{}\n", .{assembly});
