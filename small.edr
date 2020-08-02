@@ -8,10 +8,14 @@
     !print:x:_;
     !print:_:_;
     $z:0;
-    !squarex:x:z;
+    !runsquarex:x:z;
     !print:z:_;
 };
 
 #squarex:x@0:r@0{
     !mul:(x,x):r;
+};
+
+#runsquarex:x@0:r@0{
+    !squarex:(x,x):r;
 };
