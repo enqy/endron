@@ -17,7 +17,7 @@ pub fn main() anyerror!void {
     var assembly = try assemble(allocator, tokens);
     // std.debug.print("{}\n", .{assembly});
 
-    try Runtime.run(assembly, "main");
+    try Runtime.run(allocator, assembly, "main");
 }
 
 const CleanupState = enum {
@@ -499,9 +499,10 @@ fn assemble(allocator: *mem.Allocator, tokens: []Token) !Assembly {
 }
 
 const Runtime = struct {
-    const BuiltinFn = fn (var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void;
+    const BuiltinFn = fn (allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void;
     pub const Builtins = std.ComptimeStringMap(BuiltinFn, .{
         .{ "print", print },
+        .{ "readline", readline },
         .{ "add", add },
         .{ "sub", sub },
         .{ "mul", mul },
@@ -509,54 +510,63 @@ const Runtime = struct {
         .{ "square", square },
     });
 
-    fn print(var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void {
+    fn print(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void {
         switch (var_in.data) {
-            .String => std.debug.print("{}", .{var_in.data.String}),
-            .Number => std.debug.print("{d}", .{var_in.data.Number}),
-            .Void => std.debug.print("\n", .{}),
+            .String => try std.io.getStdOut().outStream().print("{}", .{var_in.data.String}),
+            .Number => try std.io.getStdOut().outStream().print("{d}", .{var_in.data.Number}),
+            .Void => try std.io.getStdOut().outStream().print("\n", .{}),
             .Tuple => {
-                std.debug.print("(", .{});
+                try std.io.getStdOut().outStream().print("(", .{});
                 for (var_in.data.Tuple.items) |item, i| {
-                    try print(item, var_out);
+                    try print(allocator, item, var_out);
 
-                    if (i != var_in.data.Tuple.items.len - 1) std.debug.print(", ", .{});
+                    if (i != var_in.data.Tuple.items.len - 1) try std.io.getStdOut().outStream().print(", ", .{});
                 }
-                std.debug.print(")", .{});
+                try std.io.getStdOut().outStream().print(")", .{});
             },
         }
     }
 
-    fn add(var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
+    fn readline(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
+        const data = try std.io.getStdIn().inStream().readUntilDelimiterAlloc(allocator, 10, std.math.maxInt(u64));
+        var_out.data = switch (var_out.data) {
+            .String => .{ .String = data },
+            .Number => .{ .Number = try std.fmt.parseFloat(f64, data) },
+            else => return error.UnsupportedType,
+        };
+    }
+
+    fn add(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
             var_out.data.Number = var_in.data.Tuple.items[0].data.Number + var_in.data.Tuple.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
-    fn sub(var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
+    fn sub(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
             var_out.data.Number = var_in.data.Tuple.items[0].data.Number - var_in.data.Tuple.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
-    fn mul(var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
+    fn mul(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
             var_out.data.Number = var_in.data.Tuple.items[0].data.Number * var_in.data.Tuple.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
-    fn div(var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
+    fn div(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
             var_out.data.Number = var_in.data.Tuple.items[0].data.Number / var_in.data.Tuple.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
-    fn square(var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
+    fn square(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Number) {
             var_out.data.Number = var_in.data.Number * var_in.data.Number;
         } else return error.UnsupportedType;
     }
 
-    pub fn run(assembly: Assembly, fnName: []const u8) !void {
+    pub fn run(allocator: *mem.Allocator, assembly: Assembly, fnName: []const u8) !void {
         if (assembly.functions.get(fnName) == null) return error.FunctionNotFound;
 
         var func_block = assembly.functions.get(fnName).?.block;
@@ -570,7 +580,7 @@ const Runtime = struct {
                                 item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                     } else { // Function with var in and var out
                         var in = func_block.variables.get(call.var_in.name).?;
                         if (in.data == .Tuple) {
@@ -578,26 +588,26 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
-                } else if (std.mem.eql(u8, call.var_in.name, "")) { 
+                } else { 
                     if (call.var_out.data == .Void) { // Function with typed in and void out
-                        var in = func_block.variables.get(call.var_in.name).?;
+                        var in = call.var_in;
                         if (in.data == .Tuple) {
                             for (in.data.Tuple.items) |*item| {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                     } else { // Function with typed in and var out
-                        var in = func_block.variables.get(call.var_in.name).?;
+                        var in = call.var_in;
                         if (in.data == .Tuple) {
                             for (in.data.Tuple.items) |*item| {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
                 }
@@ -610,7 +620,7 @@ const Runtime = struct {
                                 item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                     } else { // Function with var in and var out
                         var in = func_block.variables.get(call.var_in.name).?;
                         if (in.data == .Tuple) {
@@ -618,10 +628,10 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
-                } else if (std.mem.eql(u8, call.var_in.name, "")) { 
+                } else { 
                     if (call.var_out.data == .Void) { // Function with typed in and void out
                         var in = call.var_in;
                         if (in.data == .Tuple) {
@@ -629,7 +639,7 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                     } else { // Function with typed in and var out
                         var in = call.var_in;
                         if (in.data == .Tuple) {
@@ -637,7 +647,7 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
                 }
@@ -645,7 +655,7 @@ const Runtime = struct {
         }
     }
 
-    fn runInternal(assembly: Assembly, fnName: []const u8, var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void {
+    fn runInternal(allocator: *mem.Allocator, assembly: Assembly, fnName: []const u8, var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void {
         if (assembly.functions.get(fnName) == null) return error.FunctionNotFound;
 
         var func_block = assembly.functions.get(fnName).?.block;
@@ -663,7 +673,7 @@ const Runtime = struct {
                                 item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                     } else { // Function with var in and var out
                         var in = func_block.variables.get(call.var_in.name).?;
                         if (in.data == .Tuple) {
@@ -671,10 +681,10 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
-                } else if (std.mem.eql(u8, call.var_in.name, "")) { 
+                } else { 
                     if (call.var_out.data == .Void) { // Function with typed in and void out
                         var in = call.var_in;
                         if (in.data == .Tuple) {
@@ -683,7 +693,7 @@ const Runtime = struct {
                             }
                         }
                         std.debug.print("{}\n", .{call});
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                     } else { // Function with typed in and var out
                         var in = call.var_in;
                         if (in.data == .Tuple) {
@@ -691,7 +701,7 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try @call(.{}, Builtins.get(call.name).?, .{ in, &call.var_out });
+                        try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
                 }
@@ -704,7 +714,7 @@ const Runtime = struct {
                                 item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                     } else { // Function with var in and var out
                         var in = func_block.variables.get(call.var_in.name).?;
                         if (in.data == .Tuple) {
@@ -712,10 +722,10 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
-                } else if (std.mem.eql(u8, call.var_in.name, "")) { 
+                } else { 
                     if (call.var_out.data == .Void) { // Function with typed in and void out
                         var in = call.var_in;
                         if (in.data == .Tuple) {
@@ -723,7 +733,7 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                     } else { // Function with typed in and var out
                         var in = call.var_in;
                         if (in.data == .Tuple) {
@@ -731,7 +741,7 @@ const Runtime = struct {
                                 if (!std.mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                             }
                         }
-                        try runInternal(assembly, call.name, in, &call.var_out);
+                        try runInternal(allocator, assembly, call.name, in, &call.var_out);
                         try func_block.variables.put(call.var_out.name, call.var_out);
                     }
                 }

@@ -1,17 +1,12 @@
 #main:_@_:_@_{
-    $x:2;
-    $y:(x, 4);
-    !div:y:x;
-    !print:x:_;
-    !print:_:_;
-    !add:y:x;
-    !print:x:_;
-    !print:_:_;
+    $x:0;
+    $y:0;
+    !print:"First Num: ":_;
+    !readline:_:x;
+    !print:"Second Num: ":_;
+    !readline:_:y;
     $z:0;
-    !squarex:x:z;
+    !add:(x,y):z;
+    !print:"x + y = ":_;
     !print:z:_;
-};
-
-#squarex:x@0:r@0{
-    !mul:(x,x):r;
 };
