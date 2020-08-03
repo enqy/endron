@@ -1,0 +1,26 @@
+#main:_@_:_@_{
+    $res:false;
+    $x:123127;
+    !p:x:res;
+    !print:res:_;
+}
+
+#p:x@0:r@false{
+    $i:0;
+    !set:x:i;
+    $a:0;
+    !set:x:a;
+
+    %"while";
+
+    !sub:(i, 1):i;
+    $temp:0;
+    !mod:(x, i):temp;
+    !mul:(temp, a):a;
+
+    $cont:false;
+    !gt:(i,2):cont;
+    ^:cont:"while";
+
+    !gt:(a,1):r;
+}
