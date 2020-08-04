@@ -1,4 +1,5 @@
 const std = @import("std");
+const process = std.process;
 const mem = std.mem;
 
 pub fn main() anyerror!void {
@@ -6,7 +7,11 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    const file = try std.fs.cwd().openFile("test.edr", .{});
+    var arg_it = process.args();
+
+    _ = arg_it.skip();
+
+    const file = try std.fs.cwd().openFile(try (arg_it.next(allocator).?), .{});
     defer file.close();
     const code = try cleanup(allocator, try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)));
 
