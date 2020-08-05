@@ -21,6 +21,9 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             i = func_block.jmp_labels.get(call.var_out.data.String).?;
                             continue;
                         }
+                    } else if (mem.eql(u8, call.name, "if")) {
+                        var in = if (!mem.eql(u8, call.var_in.name, "")) func_block.variables.get(call.var_in.name).? else call.var_in;
+                        if (!in.data.Bool) i += @floatToInt(usize, call.var_out.data.Number);
                     } else {
                         if (!mem.eql(u8, call.var_in.name, "")) {
                             if (call.var_out.data == .Void) { // Functions with var in and void out
@@ -131,6 +134,9 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             i = func_block.jmp_labels.get(call.var_out.data.String).?;
                             continue;
                         }
+                    } else if (mem.eql(u8, call.name, "if")) {
+                        var in = if (!mem.eql(u8, call.var_in.name, "")) func_block.variables.get(call.var_in.name).? else call.var_in;
+                        if (!in.data.Bool) i += @floatToInt(usize, call.var_out.data.Number);
                     } else {
                         if (!mem.eql(u8, call.var_in.name, "")) {
                             if (call.var_out.data == .Void) { // Functions with var in and void out

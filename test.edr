@@ -1,0 +1,16 @@
+#main:_@_:_@_{
+    $x:0
+
+    %"top"
+
+    $check:false
+    !gte:(x,5):check
+    &:check:2
+    !print:"hi":_
+    !print:_:_
+
+    !add:(x, 1):x
+
+    !lt:(x, 10):check
+    ^:check:"top"
+}

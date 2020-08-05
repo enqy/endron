@@ -58,7 +58,7 @@ const Token = union(enum) {
     DefSym: void,
     DeclSym: void,
     TypeSym: void,
-    Semicolon: void,
+    If: void,
     Colon: void,
     Comma: void,
     BlockStart: void,
@@ -164,9 +164,9 @@ fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
             continue;
         }
 
-        // Tokenize ;
-        if (char == 59) {
-            try tokens.append(Token{ .Semicolon = {} });
+        // Tokenize &
+        if (char == 38) {
+            try tokens.append(Token{ .If = {} });
             continue;
         }
 
@@ -529,6 +529,40 @@ pub fn assemble(comptime Runtime: type, allocator: *mem.Allocator, code: []const
                     if (tokens[i + skip + 3] != .Colon) return error.InvalidSyntax;
                     if (tokens[i + skip + 4] != .String) return error.InvalidSyntax;
                     call.var_out = .{ .name = "", .data = .{ .String = tokens[i + skip + 4].String } };
+
+                    skip += 4;
+                    try function.block.calls.append(call);
+                }
+
+                if (tokens[i + skip] == .If) {
+                    var call: Assembly.Call = .{
+                        .name = "if",
+
+                        .var_in = .{
+                            .name = "",
+                            .data = .{ .Void = {} },
+                        },
+                        .var_out = .{
+                            .name = "",
+                            .data = .{ .Void = {} },
+                        },
+
+                        .builtin = true,
+                    };
+
+                    if (tokens[i + skip + 1] != .Colon) return error.InvalidSyntax;
+                    switch (tokens[i + skip + 2]) {
+                        .Bool => call.var_in = .{ .name = "", .data = .{ .Bool = tokens[i + skip + 2].Bool } },
+                        .Ident => call.var_in = .{ .name = tokens[i + skip + 2].Ident, .data = function.block.variables.get(tokens[i + skip + 2].Ident).?.data },
+                        else => return error.InvalidSyntax,
+                    }
+                    if (tokens[i + skip + 3] != .Colon) return error.InvalidSyntax;
+                    if (tokens[i + skip + 4] != .Number) return error.InvalidSyntax;
+                    switch (tokens[i + skip + 4]) {
+                        .Number => call.var_out = .{ .name = "", .data = .{ .Number = tokens[i + skip + 4].Number.num } },
+                        .Ident => call.var_out = .{ .name = tokens[i + skip + 4].Ident, .data = function.block.variables.get(tokens[i + skip + 4].Ident).?.data },
+                        else => return error.InvalidSyntax,
+                    }
 
                     skip += 4;
                     try function.block.calls.append(call);
