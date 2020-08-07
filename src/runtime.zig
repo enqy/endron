@@ -29,16 +29,26 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             if (call.var_out.data == .Void) { // Functions with var in and void out
                                 var in = func_block.variables.get(call.var_in.name).?;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
-                                        item.data = func_block.variables.get(item.name).?.data;
+                                    if (call.var_in.data.Tuple.index) |index| {
+                                        in = in.data.Tuple.items.items[index];
+                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
+                                    } else {
+                                        for (in.data.Tuple.items.items) |*item| {
+                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
+                                        }
                                     }
                                 }
                                 try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                             } else { // Function with var in and var out
                                 var in = func_block.variables.get(call.var_in.name).?;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
-                                        if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
+                                    if (call.var_in.data.Tuple.index) |index| {
+                                        in = in.data.Tuple.items.items[index];
+                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
+                                    } else {
+                                        for (in.data.Tuple.items.items) |*item| {
+                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
+                                        }
                                     }
                                 }
                                 try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
@@ -48,16 +58,26 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             if (call.var_out.data == .Void) { // Function with typed in and void out
                                 var in = call.var_in;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
-                                        if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
+                                    if (call.var_in.data.Tuple.index) |index| {
+                                        in = in.data.Tuple.items.items[index];
+                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
+                                    } else {
+                                        for (in.data.Tuple.items.items) |*item| {
+                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
+                                        }
                                     }
                                 }
                                 try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
                             } else { // Function with typed in and var out
                                 var in = call.var_in;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
-                                        if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
+                                    if (call.var_in.data.Tuple.index) |index| {
+                                        in = in.data.Tuple.items.items[index];
+                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
+                                    } else {
+                                        for (in.data.Tuple.items.items) |*item| {
+                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
+                                        }
                                     }
                                 }
                                 try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
@@ -70,15 +90,19 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         if (call.var_out.data == .Void) { // Functions with var in and void out
                             var in = func_block.variables.get(call.var_in.name).?;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
-                                    item.data = func_block.variables.get(item.name).?.data;
+                                if (in.data.Tuple.index) |index| {
+                                    in.data = in.data.Tuple.items.items[index].data;
+                                } else {
+                                    for (in.data.Tuple.items.items) |*item| {
+                                        item.data = func_block.variables.get(item.name).?.data;
+                                    }
                                 }
                             }
                             try runInternal(allocator, assembly, call.name, in, &call.var_out);
                         } else { // Function with var in and var out
                             var in = func_block.variables.get(call.var_in.name).?;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
+                                for (in.data.Tuple.items.items) |*item| {
                                     if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                 }
                             }
@@ -89,7 +113,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         if (call.var_out.data == .Void) { // Function with typed in and void out
                             var in = call.var_in;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
+                                for (in.data.Tuple.items.items) |*item| {
                                     if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                 }
                             }
@@ -97,7 +121,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         } else { // Function with typed in and var out
                             var in = call.var_in;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
+                                for (in.data.Tuple.items.items) |*item| {
                                     if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                 }
                             }
@@ -142,7 +166,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             if (call.var_out.data == .Void) { // Functions with var in and void out
                                 var in = func_block.variables.get(call.var_in.name).?;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
+                                    for (in.data.Tuple.items.items) |*item| {
                                         item.data = func_block.variables.get(item.name).?.data;
                                     }
                                 }
@@ -150,7 +174,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             } else { // Function with var in and var out
                                 var in = func_block.variables.get(call.var_in.name).?;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
+                                    for (in.data.Tuple.items.items) |*item| {
                                         if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                     }
                                 }
@@ -161,7 +185,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             if (call.var_out.data == .Void) { // Function with typed in and void out
                                 var in = call.var_in;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
+                                    for (in.data.Tuple.items.items) |*item| {
                                         if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                     }
                                 }
@@ -169,7 +193,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             } else { // Function with typed in and var out
                                 var in = call.var_in;
                                 if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items) |*item| {
+                                    for (in.data.Tuple.items.items) |*item| {
                                         if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                     }
                                 }
@@ -183,7 +207,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         if (call.var_out.data == .Void) { // Functions with var in and void out
                             var in = func_block.variables.get(call.var_in.name).?;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
+                                for (in.data.Tuple.items.items) |*item| {
                                     item.data = func_block.variables.get(item.name).?.data;
                                 }
                             }
@@ -191,7 +215,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         } else { // Function with var in and var out
                             var in = func_block.variables.get(call.var_in.name).?;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
+                                for (in.data.Tuple.items.items) |*item| {
                                     if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                 }
                             }
@@ -202,7 +226,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         if (call.var_out.data == .Void) { // Function with typed in and void out
                             var in = call.var_in;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
+                                for (in.data.Tuple.items.items) |*item| {
                                     if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                 }
                             }
@@ -210,7 +234,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         } else { // Function with typed in and var out
                             var in = call.var_in;
                             if (in.data == .Tuple) {
-                                for (in.data.Tuple.items) |*item| {
+                                for (in.data.Tuple.items.items) |*item| {
                                     if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
                                 }
                             }
@@ -258,10 +282,10 @@ pub const SimpleRuntime = struct {
             .Void => try std.io.getStdOut().outStream().print("\n", .{}),
             .Tuple => {
                 try std.io.getStdOut().outStream().print("(", .{});
-                for (var_in.data.Tuple.items) |item, i| {
+                for (var_in.data.Tuple.items.items) |item, i| {
                     try print(allocator, item, var_out);
 
-                    if (i != var_in.data.Tuple.items.len - 1) try std.io.getStdOut().outStream().print(", ", .{});
+                    if (i != var_in.data.Tuple.items.items.len - 1) try std.io.getStdOut().outStream().print(", ", .{});
                 }
                 try std.io.getStdOut().outStream().print(")", .{});
             },
@@ -283,69 +307,69 @@ pub const SimpleRuntime = struct {
 
     fn add(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items[0].data.Number + var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number + var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn sub(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items[0].data.Number - var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number - var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn mul(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items[0].data.Number * var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number * var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn div(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items[0].data.Number / var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number / var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn mod(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Number = @mod(var_in.data.Tuple.items[0].data.Number, var_in.data.Tuple.items[1].data.Number);
+            var_out.data.Number = @mod(var_in.data.Tuple.items.items[0].data.Number, var_in.data.Tuple.items.items[1].data.Number);
         } else return error.UnsupportedType;
     }
 
     fn gt(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items[0].data.Number > var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number > var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn gte(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items[0].data.Number >= var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number >= var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn lt(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items[0].data.Number < var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number < var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn lte(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items[0].data.Number <= var_in.data.Tuple.items[1].data.Number;
+            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number <= var_in.data.Tuple.items.items[1].data.Number;
         } else return error.UnsupportedType;
     }
 
     fn eql(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
         if (var_in.data == .Tuple) {
-            switch (var_in.data.Tuple.items[0].data) {
+            switch (var_in.data.Tuple.items.items[0].data) {
                 .String => {
-                    var_out.data.Bool = mem.eql(u8, var_in.data.Tuple.items[0].data.String, var_in.data.Tuple.items[1].data.String);
+                    var_out.data.Bool = mem.eql(u8, var_in.data.Tuple.items.items[0].data.String, var_in.data.Tuple.items.items[1].data.String);
                 },
                 .Number => {
-                    var_out.data.Bool = var_in.data.Tuple.items[0].data.Number == var_in.data.Tuple.items[1].data.Number;
+                    var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number == var_in.data.Tuple.items.items[1].data.Number;
                 },
                 .Bool => {
-                    var_out.data.Bool = var_in.data.Tuple.items[0].data.Bool == var_in.data.Tuple.items[1].data.Bool;
+                    var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Bool == var_in.data.Tuple.items.items[1].data.Bool;
                 },
                 else => return error.NotSupportedYet,
             }

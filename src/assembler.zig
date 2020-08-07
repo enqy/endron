@@ -255,7 +255,7 @@ pub const Assembly = struct {
             Number: f64,
             String: []const u8,
             Bool: bool,
-            Tuple: std.ArrayList(Variable),
+            Tuple: struct { items: std.ArrayList(Variable), index: ?usize = null },
             Void: void,
         },
     };
@@ -416,16 +416,33 @@ pub fn assemble(comptime Runtime: type, allocator: *mem.Allocator, code: []const
                         .Bool => decl.data = .{ .Bool = tokens[i + skip + 3].Bool },
                         .Void => decl.data = .{ .Void = {} },
                         .TupleStart => {
-                            decl.data = .{ .Tuple = std.ArrayList(Assembly.Variable).init(allocator) };
+                            decl.data = .{ .Tuple = .{ .items = std.ArrayList(Assembly.Variable).init(allocator) } };
                             skip += 1;
                             while (tokens[i + skip + 3] != .TupleEnd) {
                                 try switch (tokens[i + skip + 3]) {
-                                    .String => decl.data.Tuple.append(.{ .name = "", .data = .{ .String = tokens[i + skip + 3].String } }),
-                                    .Number => decl.data.Tuple.append(.{ .name = "", .data = .{ .Number = tokens[i + skip + 3].Number.num } }),
-                                    .Ident => decl.data.Tuple.append(.{ .name = tokens[i + skip + 3].Ident, .data = function.block.variables.get(tokens[i + skip + 3].Ident).?.data }),
-                                    .Bool => decl.data.Tuple.append(.{ .name = "", .data = .{ .Bool = tokens[i + skip + 3].Bool } }),
-                                    .Void => decl.data.Tuple.append(.{ .name = "", .data = .{ .Void = {} } }),
-                                    .TupleStart => return error.NotSupportedYet,
+                                    .String => decl.data.Tuple.items.append(.{ .name = "", .data = .{ .String = tokens[i + skip + 3].String } }),
+                                    .Number => decl.data.Tuple.items.append(.{ .name = "", .data = .{ .Number = tokens[i + skip + 3].Number.num } }),
+                                    .Ident => decl.data.Tuple.items.append(.{ .name = tokens[i + skip + 3].Ident, .data = function.block.variables.get(tokens[i + skip + 3].Ident).?.data }),
+                                    .Bool => decl.data.Tuple.items.append(.{ .name = "", .data = .{ .Bool = tokens[i + skip + 3].Bool } }),
+                                    .Void => decl.data.Tuple.items.append(.{ .name = "", .data = .{ .Void = {} } }),
+                                    .TupleStart => {
+                                        var inner = std.ArrayList(Assembly.Variable).init(allocator);
+                                        skip += 1;
+                                        while (tokens[i + skip + 3] != .TupleEnd) {
+                                            try switch (tokens[i + skip + 3]) {
+                                                .String => inner.append(.{ .name = "", .data = .{ .String = tokens[i + skip + 3].String } }),
+                                                .Number => inner.append(.{ .name = "", .data = .{ .Number = tokens[i + skip + 3].Number.num } }),
+                                                .Ident => inner.append(.{ .name = tokens[i + skip + 3].Ident, .data = function.block.variables.get(tokens[i + skip + 3].Ident).?.data }),
+                                                .Bool => inner.append(.{ .name = "", .data = .{ .Bool = tokens[i + skip + 3].Bool } }),
+                                                .Void => inner.append(.{ .name = "", .data = .{ .Void = {} } }),
+                                                .TupleStart => return error.NotSupportedYet,
+                                                .Comma => {},
+                                                else => return error.InvalidSyntax,
+                                            };
+                                            skip += 1;
+                                        }
+                                        try decl.data.Tuple.items.append(.{ .name = "", .data = .{ .Tuple = .{ .items = inner } } });
+                                    },
                                     .Comma => {},
                                     else => return error.InvalidSyntax,
                                 };
@@ -465,16 +482,33 @@ pub fn assemble(comptime Runtime: type, allocator: *mem.Allocator, code: []const
                         .Bool => call.var_in = .{ .name = "", .data = .{ .Bool = tokens[i + skip + 3].Bool } },
                         .Void => call.var_in = .{ .name = "", .data = .{ .Void = {} } },
                         .TupleStart => {
-                            call.var_in = .{ .name = "", .data = .{ .Tuple = std.ArrayList(Assembly.Variable).init(allocator) } };
+                            call.var_in = .{ .name = "", .data = .{ .Tuple = .{ .items = std.ArrayList(Assembly.Variable).init(allocator) } } };
                             skip += 1;
                             while (tokens[i + skip + 3] != .TupleEnd) {
                                 try switch (tokens[i + skip + 3]) {
-                                    .String => call.var_in.data.Tuple.append(.{ .name = "", .data = .{ .String = tokens[i + skip + 3].String } }),
-                                    .Number => call.var_in.data.Tuple.append(.{ .name = "", .data = .{ .Number = tokens[i + skip + 3].Number.num } }),
-                                    .Ident => call.var_in.data.Tuple.append(.{ .name = tokens[i + skip + 3].Ident, .data = function.block.variables.get(tokens[i + skip + 3].Ident).?.data }),
-                                    .Bool => call.var_in.data.Tuple.append(.{ .name = "", .data = .{ .Bool = tokens[i + skip + 3].Bool } }),
-                                    .Void => call.var_in.data.Tuple.append(.{ .name = "", .data = .{ .Void = {} } }),
-                                    .TupleStart => return error.NotSupportedYet,
+                                    .String => call.var_in.data.Tuple.items.append(.{ .name = "", .data = .{ .String = tokens[i + skip + 3].String } }),
+                                    .Number => call.var_in.data.Tuple.items.append(.{ .name = "", .data = .{ .Number = tokens[i + skip + 3].Number.num } }),
+                                    .Ident => call.var_in.data.Tuple.items.append(.{ .name = tokens[i + skip + 3].Ident, .data = function.block.variables.get(tokens[i + skip + 3].Ident).?.data }),
+                                    .Bool => call.var_in.data.Tuple.items.append(.{ .name = "", .data = .{ .Bool = tokens[i + skip + 3].Bool } }),
+                                    .Void => call.var_in.data.Tuple.items.append(.{ .name = "", .data = .{ .Void = {} } }),
+                                    .TupleStart => {
+                                        var inner = std.ArrayList(Assembly.Variable).init(allocator);
+                                        skip += 1;
+                                        while (tokens[i + skip + 3] != .TupleEnd) {
+                                            try switch (tokens[i + skip + 3]) {
+                                                .String => inner.append(.{ .name = "", .data = .{ .String = tokens[i + skip + 3].String } }),
+                                                .Number => inner.append(.{ .name = "", .data = .{ .Number = tokens[i + skip + 3].Number.num } }),
+                                                .Ident => inner.append(.{ .name = tokens[i + skip + 3].Ident, .data = function.block.variables.get(tokens[i + skip + 3].Ident).?.data }),
+                                                .Bool => inner.append(.{ .name = "", .data = .{ .Bool = tokens[i + skip + 3].Bool } }),
+                                                .Void => inner.append(.{ .name = "", .data = .{ .Void = {} } }),
+                                                .TupleStart => return error.NotSupportedYet,
+                                                .Comma => {},
+                                                else => return error.InvalidSyntax,
+                                            };
+                                            skip += 1;
+                                        }
+                                        try call.var_in.data.Tuple.items.append(.{ .name = "", .data = .{ .Tuple = .{ .items = inner } } });
+                                    },
                                     .Comma => {},
                                     else => return error.InvalidSyntax,
                                 };
@@ -483,7 +517,18 @@ pub fn assemble(comptime Runtime: type, allocator: *mem.Allocator, code: []const
                         },
                         else => return error.InvalidSyntax,
                     }
-                    if (tokens[i + skip + 4] != .Colon) return error.InvalidSyntax;
+                    switch (tokens[i + skip + 4]) {
+                        .IndexStart => {
+                            skip += 1;
+                            switch (tokens[i + skip + 4]) {
+                                .Number => call.var_in.data.Tuple.index = @floatToInt(usize, tokens[i + skip + 4].Number.num),
+                                else => return error.InvalidSyntax,
+                            }
+                            skip += 2;
+                        },
+                        .Colon => {},
+                        else => return error.InvalidSyntax,
+                    }
                     switch (tokens[i + skip + 5]) {
                         .Ident => call.var_out = .{ .name = tokens[i + skip + 5].Ident, .data = function.block.variables.get(tokens[i + skip + 5].Ident).?.data },
                         .Void => call.var_out = .{ .name = "", .data = .{ .Void = {} } },
