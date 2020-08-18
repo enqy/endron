@@ -1,5 +1,24 @@
-#main:_@_:_@_{
-    $y:10
-    $x:(1, 2, y)
-    !print:x[2]:_
+@main{
+    ; res is a bool
+    %($bool, res)
+
+    ; x and y are ints
+    %($int, x, y)
+
+    ; set x and y to 0
+    ~(0, x, y)
+
+    ; set res to result of fn gt
+    ~(!(gt, x, y), res)
+
+    ; print res
+    !(print, res)
+}
+
+@calc{
+    %($num, x, y, res)
+
+    ~(!(readline), x)
+
+    
 }
