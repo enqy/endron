@@ -1,54 +1,27 @@
-#main:_@_:_@_{
-    $x:0
-    $y:0
-    $op:""
+@($block, calc)
+~({
+    @($num, x, y)
+    @($str, op)
 
-    !print:"First Num: ":_
-    !readline:_:x
-    !print:"Second Num: ":_
-    !readline:_:y
-    !print:"Operation: ":_
-    !readline:_:op
+    !(print, "First Number: ")
+    ~(!(readlineNum, void), x)
+    !(print, "Second Number: ")
+    ~(!(readlineNum, void), y)
+    !(print, "Operation: ")
+    ~(!(readline, void), op)
 
-    $opc:false
-    !eql:(op, "+"):opc
-    ^:opc:"add"
+    ?(op, "+", {
+        !(print, "Answer: ", !(add, x, y))
+    })
+    ?(op, "-", {
+        !(print, "Answer: ", !(sub, x, y))
+    })
+    ?(op, "*", {
+        !(print, "Answer: ", !(mul, x, y))
+    })
+    ?(op, "/", {
+        !(print, "Answer: ", !(div, x, y))
+    })
+}, calc)
 
-    $opc:false
-    !eql:(op, "-"):opc
-    ^:opc:"sub"
-
-    $opc:false
-    !eql:(op, "*"):opc
-    ^:opc:"mul"
-
-    $opc:false
-    !eql:(op, "/"):opc
-    ^:opc:"div"
-
-    ^:true:"print"
-
-    %"add"
-    $z:0
-    !add:(x,y):z
-    ^:true:"print"
-
-    %"sub"
-    $z:0
-    !sub:(x,y):z
-    ^:true:"print"
-
-    %"mul"
-    $z:0
-    !mul:(x,y):z
-    ^:true:"print"
-
-    %"div"
-    $z:0
-    !div:(x,y):z
-    ^:true:"print"
-    
-    %"print"
-    !print:"Answer: ":_
-    !print:z:_
-}
+!(calc, void)
