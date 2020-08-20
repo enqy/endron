@@ -24,7 +24,6 @@ pub const Parsed = struct {
             base: Operation = .{ .kind = .Decl },
 
             kind: Variable.Kind,
-            nullable: bool = false,
             decls: [][]const u8,
         };
 
@@ -125,15 +124,6 @@ pub fn parse(allocator: *mem.Allocator, tokens: []const tk.Token) !Parsed {
     var block = try parseBlock(&arena.allocator, tokens, 0, tokens.len);
     var parsed = Parsed.init(arena, block);
 
-    for (parsed.block.operations.items) |op| {
-        switch (op.kind) {
-            .Decl => std.debug.print("{}\n", .{@fieldParentPtr(Parsed.Operation.Decl, "base", op)}),
-            .Set => std.debug.print("{}\n", .{@fieldParentPtr(Parsed.Operation.Set, "base", op)}),
-            .Call => std.debug.print("{}\n", .{@fieldParentPtr(Parsed.Operation.Call, "base", op)}),
-            else => {},
-        }
-    }
-
     return parsed;
 }
 
@@ -154,11 +144,6 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
 
                 if (tokens[i] != .TypeSym) std.debug.panic("Expected TypeSym `$` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
-
-                if (tokens[i] == .NullSym) {
-                    operation.*.nullable = true;
-                    i += 1;
-                }
 
                 if (tokens[i] != .Ident) std.debug.panic("Expected Ident token, found {} at index {}", .{ tokens[i], i });
                 operation.*.kind = BuiltinTypeMap.get(tokens[i].Ident) orelse std.debug.panic("Expected a type, found {} at index {}", .{ tokens[i], i });
@@ -201,11 +186,17 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
                     .String => operation.*.input = .{ .Literal = .{ .String = tokens[i].String } },
                     .Bool => operation.*.input = .{ .Literal = .{ .Bool = tokens[i].Bool } },
 
-                    .Void => operation.*.input = .{ .Literal = .{ .Void = {} }},
+                    .Void => operation.*.input = .{ .Literal = .{ .Void = {} } },
 
                     .BlockStart => {
-                        var end: usize = 0;
-                        while (i + end < blockEnd and tokens[i + end] != .BlockEnd) end += 1;
+                        var end: usize = 1;
+                        var seen_start = false;
+                        while (i + end < blockEnd) {
+                            if (tokens[i + end] == .BlockEnd and !seen_start) break;
+                            if (tokens[i + end] == .BlockStart) seen_start = true;
+                            if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
+                            end += 1;
+                        }
                         operation.*.input = .{ .Literal = .{ .Block = try parseBlock(allocator, tokens, i + 1, i + end) } };
                         i += end;
                     },
@@ -239,6 +230,85 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
             .CallSym => {
                 try block.operations.append(try parseOpCall(allocator, tokens, &i));
                 i += 1;
+            },
+            .IfSym => {
+                i += 1;
+
+                if (tokens[i] != .TupleStart) std.debug.panic("Expected TupleStart `(` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                const operation = try allocator.create(Parsed.Operation.If);
+                operation.*.base = .{ .kind = .If };
+
+                switch (tokens[i]) {
+                    .Ident => operation.*.input = .{ .Variable = .{ .name = tokens[i].Ident, .kind = null } },
+
+                    .Integer => operation.*.input = .{ .Literal = .{ .Integer = tokens[i].Integer.num } },
+                    .Number => operation.*.input = .{ .Literal = .{ .Number = tokens[i].Number.num } },
+                    .String => operation.*.input = .{ .Literal = .{ .String = tokens[i].String } },
+                    .Bool => operation.*.input = .{ .Literal = .{ .Bool = tokens[i].Bool } },
+
+                    .CallSym => operation.*.input = .{ .Operation = try parseOpCall(allocator, tokens, &i) },
+
+                    else => std.debug.panic("Expected CallSym `!`, Ident, BlockStart `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
+                }
+                i += 1;
+
+                if (tokens[i] != .Comma) std.debug.panic("Expected Comma `,` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                switch (tokens[i]) {
+                    .Ident => operation.*.comp = .{ .Variable = .{ .name = tokens[i].Ident, .kind = null } },
+
+                    .Integer => operation.*.comp = .{ .Literal = .{ .Integer = tokens[i].Integer.num } },
+                    .Number => operation.*.comp = .{ .Literal = .{ .Number = tokens[i].Number.num } },
+                    .String => operation.*.comp = .{ .Literal = .{ .String = tokens[i].String } },
+                    .Bool => operation.*.comp = .{ .Literal = .{ .Bool = tokens[i].Bool } },
+
+                    .CallSym => operation.*.comp = .{ .Operation = try parseOpCall(allocator, tokens, &i) },
+
+                    else => std.debug.panic("Expected CallSym `!`, Ident, BlockStart `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
+                }
+                i += 1;
+
+                if (tokens[i] != .Comma) std.debug.panic("Expected Comma `,` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                if (tokens[i] == .BlockStart) {
+                    var end: usize = 1;
+                        var seen_start = false;
+                        while (i + end < blockEnd) {
+                            if (tokens[i + end] == .BlockEnd and !seen_start) break;
+                            if (tokens[i + end] == .BlockStart) seen_start = true;
+                            if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
+                            end += 1;
+                        }
+                    operation.*.ifblock = try parseBlock(allocator, tokens, i + 1, i + end);
+                    i += end;
+                } else std.debug.panic("Expected BlockStart `{{` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                if (tokens[i] == .Comma) {
+                    i += 1;
+                    if (tokens[i] == .BlockStart) {
+                        var end: usize = 1;
+                        var seen_start = false;
+                        while (i + end < blockEnd) {
+                            if (tokens[i + end] == .BlockEnd and !seen_start) break;
+                            if (tokens[i + end] == .BlockStart) seen_start = true;
+                            if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
+                            end += 1;
+                        }
+                        operation.*.elseblock = try parseBlock(allocator, tokens, i + 1, i + end);
+                        i += end;
+                    } else std.debug.panic("Expected BlockStart `{{` token, found {} at index {}", .{ tokens[i], i });
+                    i += 1;
+                }
+
+                if (tokens[i] != .TupleEnd) std.debug.panic("Expected TupleEnd `)` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                try block.operations.append(&operation.base);
             },
 
             else => std.debug.panic("Unexpected Token: {} at index {}\n", .{ tokens[i], i }),

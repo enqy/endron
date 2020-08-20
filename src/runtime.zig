@@ -70,7 +70,13 @@ pub fn RuntimeBase(comptime Builtins: type) type {
             _ = try runBlock(&state, &state.block, null);
         }
 
-        fn runBlock(state: *RuntimeState, block: *RuntimeState.Block, var_in: ?[]RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        fn runBlock(state: *RuntimeState, block: *RuntimeState.Block, var_in: ?[]std.StringHashMap(RuntimeState.Variable).Entry) anyerror!std.StringHashMap(RuntimeState.Variable) {
+            if (var_in) |ins| {
+                for (ins) |in| {
+                    try block.variables.put(in.key, in.value);
+                }
+            }
+
             const ops = block.block.operations.items;
 
             var i: usize = 0;
@@ -90,7 +96,6 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             .Block => for (op.decls) |decl| try block.variables.put(decl, .{ .Block = RuntimeState.Block.init(state.allocator) }),
                         }
                     },
-
                     .Set => {
                         const op = @fieldParentPtr(pa.Parsed.Operation.Set, "base", ops[i]);
 
@@ -117,20 +122,105 @@ pub fn RuntimeBase(comptime Builtins: type) type {
 
                                     .Block => block.variables.getEntry(out.name).?.value.Block.block = block.variables.get(v.name).?.Block.block,
                                 },
-                                else => std.debug.panic("Not Supported Yet!", .{}),
+                                .Operation => |o| block.variables.getEntry(out.name).?.value = (try runOpCall(state, block, o)).?,
                             }
                         }
                     },
-
                     .Call => _ = try runOpCall(state, block, ops[i]),
+                    .If => {
+                        const op = @fieldParentPtr(pa.Parsed.Operation.If, "base", ops[i]);
 
-                    else => std.debug.panic("Not Supported Yet!", .{}),
+                        var ifelse = false;
+                        switch (op.input) {
+                            .Literal => |il| {
+                                switch (op.comp) {
+                                    .Literal => |cl| {
+                                        if (@enumToInt(il) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{il, cl});
+                                        switch (il) {
+                                            .Integer => ifelse = (il.Integer == cl.Integer),
+                                            .Number => ifelse = (il.Number == cl.Number),
+                                            .String => ifelse = mem.eql(u8, il.String, cl.String),
+                                            .Bool => ifelse = (il.Bool == cl.Bool),
+
+                                            else => std.debug.panic("Not Supported!", .{}),
+                                        }
+                                    },
+                                    .Variable => |cv| {
+                                        if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
+                                        if (@enumToInt(il) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{il, block.variables.get(cv.name).?});
+                                        const cd = block.variables.get(cv.name).?;
+                                        switch (il) {
+                                            .Integer => ifelse = (il.Integer == cd.Integer),
+                                            .Number => ifelse = (il.Number == cd.Number),
+                                            .String => ifelse = mem.eql(u8, il.String, cd.String),
+                                            .Bool => ifelse = (il.Bool == cd.Bool),
+
+                                            else => std.debug.panic("Not Supported!", .{}),
+                                        }
+                                    },
+                                    else => std.debug.panic("Not Supported Yet!", .{}),
+                                }
+                            },
+                            .Variable => |iv| {
+                                switch (op.comp) {
+                                    .Literal => |cl| {
+                                        if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
+                                        if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{block.variables.get(iv.name).?, cl});
+                                        const id = block.variables.get(iv.name).?;
+                                        switch (id) {
+                                            .Integer => ifelse = (id.Integer == cl.Integer),
+                                            .Number => ifelse = (id.Number == cl.Number),
+                                            .String => ifelse = mem.eql(u8, id.String, cl.String),
+                                            .Bool => ifelse = (id.Bool == cl.Bool),
+
+                                            else => std.debug.panic("Not Supported!", .{}),
+                                        }
+                                    },
+                                    .Variable => |cv| {
+                                        if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
+                                        if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
+                                        if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{block.variables.get(iv.name).?, block.variables.get(cv.name).?});
+                                        const id = block.variables.get(iv.name).?;
+                                        const cd = block.variables.get(cv.name).?;
+                                        switch (id) {
+                                            .Integer => ifelse = (id.Integer == cd.Integer),
+                                            .Number => ifelse = (id.Number == cd.Number),
+                                            .String => ifelse = mem.eql(u8, id.String, cd.String),
+                                            .Bool => ifelse = (id.Bool == cd.Bool),
+
+                                            else => std.debug.panic("Not Supported!", .{}),
+                                        }
+                                    },
+                                    else => std.debug.panic("Not Supported Yet!", .{}),
+                                }
+                            },
+                            else => std.debug.panic("Not Supported Yet!", .{}),
+                        }
+
+                        if (ifelse) {
+                            var ifelseblock = RuntimeState.Block.initBlock(state.allocator, op.ifblock);
+                            defer ifelseblock.deinit();
+                            const var_out = (try runBlock(state, &ifelseblock, block.variables.items())).items();
+                            for (var_out) |out| {
+                                try block.variables.put(out.key, out.value);
+                            }
+                        } else {
+                            if (op.elseblock != null) {
+                                var ifelseblock = RuntimeState.Block.initBlock(state.allocator, op.elseblock.?);
+                                defer ifelseblock.deinit();
+                                const var_out = (try runBlock(state, &ifelseblock, block.variables.items())).items();
+                                for (var_out) |out| {
+                                    try block.variables.put(out.key, out.value);
+                                }
+                            }
+                        }
+                    },
                 }
 
                 i += 1;
             }
 
-            return block.variables.get("out");
+            return block.variables;
         }
 
         fn runOpCall(state: *RuntimeState, block: *RuntimeState.Block, opp: *pa.Parsed.Operation) anyerror!?RuntimeState.Variable {
@@ -150,8 +240,8 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                     .Block => |d| try inputs.append(.{ .Block = RuntimeState.Block.initBlock(state.allocator, d) }),
                 },
                 .Variable => |v| {
-                    if (!state.block.variables.contains(v.name)) std.debug.panic("Variable `{}` not found!", .{v.name});
-                    try inputs.append(state.block.variables.get(v.name).?);
+                    if (!block.variables.contains(v.name)) std.debug.panic("Variable `{}` not found!", .{v.name});
+                    try inputs.append(block.variables.get(v.name).?);
                 },
 
                 .Operation => try inputs.append((try runOpCall(state, block, input.Operation)) orelse .{ .Void = {} }),
@@ -161,7 +251,12 @@ pub fn RuntimeBase(comptime Builtins: type) type {
             if (Builtins.has(op.func)) {
                 return @call(.{}, Builtins.get(op.func).?, .{ state, input_slice });
             } else if (block.variables.contains(op.func) and block.variables.get(op.func).? == .Block) {
-                return runBlock(state, &block.variables.getEntry(op.func).?.value.Block, null);
+                var block_inputs = try block.variables.clone();
+                defer block_inputs.deinit();
+                for (input_slice) |in, i| {
+                    try block_inputs.put(try std.fmt.allocPrint(state.allocator, "_in_{c}", .{std.fmt.digitToChar(@intCast(u8, i + 10), true)}), in);
+                }
+                return (try runBlock(state, &block.variables.getEntry(op.func).?.value.Block, block_inputs.items())).get("_out");
             } else std.debug.panic("Function Not Found: {}", .{op.func});
             state.allocator.free(input_slice);
         }
@@ -175,6 +270,9 @@ pub const SimpleRuntime = struct {
         .{ "sub", sub },
         .{ "mul", mul },
         .{ "div", div },
+        .{ "readline", readline },
+        .{ "readlineInt", readlineInt },
+        .{ "readlineNum", readlineNum },
     });
 
     fn print(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
@@ -198,6 +296,21 @@ pub const SimpleRuntime = struct {
         }
 
         return null;
+    }
+
+    fn readline(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        const data = try std.io.getStdIn().inStream().readUntilDelimiterAlloc(state.allocator, 10, std.math.maxInt(u64));
+        return RuntimeState.Variable{ .String = data };
+    }
+
+    fn readlineInt(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        const data = try std.io.getStdIn().inStream().readUntilDelimiterAlloc(state.allocator, 10, std.math.maxInt(u64));
+        return RuntimeState.Variable{ .Integer = try std.fmt.parseInt(i64, data, 10) };
+    }
+
+    fn readlineNum(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        const data = try std.io.getStdIn().inStream().readUntilDelimiterAlloc(state.allocator, 10, std.math.maxInt(u64));
+        return RuntimeState.Variable{ .Number = try std.fmt.parseFloat(f64, data) };
     }
 
     fn add(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {

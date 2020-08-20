@@ -62,7 +62,6 @@ pub const Token = union(enum) {
     Number: struct { string: []const u8, num: f64 },
     Bool: bool,
     Void: void,
-    Null: void,
     Ident: []const u8,
 
     CallSym: void,
@@ -70,7 +69,6 @@ pub const Token = union(enum) {
     DeclSym: void,
     SetSym: void,
     IfSym: void,
-    NullSym: void,
 
     Colon: void,
     Comma: void,
@@ -133,9 +131,6 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
             } else if (mem.eql(u8, curr_token.Ident, "void")) {
                 allocator.free(curr_token.Ident);
                 try tokens.append(.{ .Void = {} });
-            } else if (mem.eql(u8, curr_token.Ident, "null")) {
-                allocator.free(curr_token.Ident);
-                try tokens.append(.{ .Null = {} });
             } else {
                 try tokens.append(curr_token);
             }
@@ -237,15 +232,9 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
             continue;
         }
 
-        // Tokenize &
-        if (char == 38) {
-            try tokens.append(Token{ .IfSym = {} });
-            continue;
-        }
-
         // Tokenize ?
         if (char == 63) {
-            try tokens.append(Token{ .NullSym = {} });
+            try tokens.append(Token{ .IfSym = {} });
             continue;
         }
 
