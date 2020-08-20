@@ -1,258 +1,169 @@
 const std = @import("std");
 const mem = std.mem;
 
-const Assembly = @import("assembler.zig").Assembly;
+const pa = @import("parser.zig");
 
-pub const BuiltinFn = fn (allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void;
+pub const BuiltinFn = fn (state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable;
+
+pub const RuntimeState = struct {
+    pub const Variable = union(pa.Parsed.Variable.Kind) {
+        Integer: i64,
+        Number: f64,
+        String: []const u8,
+        Bool: bool,
+
+        Void: void,
+
+        Block: Block,
+    };
+
+    pub const Block = struct {
+        variables: std.StringHashMap(Variable),
+        block: pa.Parsed.Block,
+
+        fn init(allocator: *mem.Allocator) Block {
+            return Block{
+                .variables = std.StringHashMap(Variable).init(allocator),
+                .block = undefined,
+            };
+        }
+
+        fn initBlock(allocator: *mem.Allocator, block: pa.Parsed.Block) Block {
+            return Block{
+                .variables = std.StringHashMap(Variable).init(allocator),
+                .block = block,
+            };
+        }
+
+        fn deinit(self: *Block) void {
+            self.variables.deinit();
+            self.* = undefined;
+        }
+    };
+
+    allocator: *mem.Allocator,
+
+    block: Block,
+
+    fn init(allocator: *mem.Allocator, block: pa.Parsed.Block) RuntimeState {
+        return RuntimeState{
+            .allocator = allocator,
+
+            .block = Block.initBlock(allocator, block),
+        };
+    }
+
+    fn deinit(self: *RuntimeState) void {
+        self.block.deinit();
+        self.* = undefined;
+    }
+};
 
 pub fn RuntimeBase(comptime Builtins: type) type {
     return struct {
-        pub fn run(allocator: *mem.Allocator, assembly: Assembly, fnName: []const u8) !void {
-            if (assembly.functions.get(fnName) == null) return error.FunctionNotFound;
+        pub fn run(parsed: *pa.Parsed) !void {
+            var allocator = &parsed.arena.allocator;
 
-            var func_block = assembly.functions.get(fnName).?.block;
-            var i: usize = 0;
-            while (i < func_block.calls.items.len) {
-                var call = &func_block.calls.items[i];
-                if (call.builtin) {
-                    if (mem.eql(u8, call.name, "jmp")) {
-                        var in = if (!mem.eql(u8, call.var_in.name, "")) func_block.variables.get(call.var_in.name).? else call.var_in;
-                        if (in.data.Bool) {
-                            i = func_block.jmp_labels.get(call.var_out.data.String).?;
-                            continue;
-                        }
-                    } else if (mem.eql(u8, call.name, "if")) {
-                        var in = if (!mem.eql(u8, call.var_in.name, "")) func_block.variables.get(call.var_in.name).? else call.var_in;
-                        if (!in.data.Bool) i += @floatToInt(usize, call.var_out.data.Number);
-                    } else {
-                        if (!mem.eql(u8, call.var_in.name, "")) {
-                            if (call.var_out.data == .Void) { // Functions with var in and void out
-                                var in = func_block.variables.get(call.var_in.name).?;
-                                if (in.data == .Tuple) {
-                                    if (call.var_in.data.Tuple.index) |index| {
-                                        in = in.data.Tuple.items.items[index];
-                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
-                                    } else {
-                                        for (in.data.Tuple.items.items) |*item| {
-                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                        }
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                            } else { // Function with var in and var out
-                                var in = func_block.variables.get(call.var_in.name).?;
-                                if (in.data == .Tuple) {
-                                    if (call.var_in.data.Tuple.index) |index| {
-                                        in = in.data.Tuple.items.items[index];
-                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
-                                    } else {
-                                        for (in.data.Tuple.items.items) |*item| {
-                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                        }
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                                try func_block.variables.put(call.var_out.name, call.var_out);
-                            }
-                        } else {
-                            if (call.var_out.data == .Void) { // Function with typed in and void out
-                                var in = call.var_in;
-                                if (in.data == .Tuple) {
-                                    if (call.var_in.data.Tuple.index) |index| {
-                                        in = in.data.Tuple.items.items[index];
-                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
-                                    } else {
-                                        for (in.data.Tuple.items.items) |*item| {
-                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                        }
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                            } else { // Function with typed in and var out
-                                var in = call.var_in;
-                                if (in.data == .Tuple) {
-                                    if (call.var_in.data.Tuple.index) |index| {
-                                        in = in.data.Tuple.items.items[index];
-                                        if (!mem.eql(u8, in.name, "")) in.data = func_block.variables.get(in.name).?.data;
-                                    } else {
-                                        for (in.data.Tuple.items.items) |*item| {
-                                            if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                        }
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                                try func_block.variables.put(call.var_out.name, call.var_out);
-                            }
-                        }
-                    }
-                } else {
-                    if (!mem.eql(u8, call.var_in.name, "")) {
-                        if (call.var_out.data == .Void) { // Functions with var in and void out
-                            var in = func_block.variables.get(call.var_in.name).?;
-                            if (in.data == .Tuple) {
-                                if (in.data.Tuple.index) |index| {
-                                    in.data = in.data.Tuple.items.items[index].data;
-                                } else {
-                                    for (in.data.Tuple.items.items) |*item| {
-                                        item.data = func_block.variables.get(item.name).?.data;
-                                    }
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                        } else { // Function with var in and var out
-                            var in = func_block.variables.get(call.var_in.name).?;
-                            if (in.data == .Tuple) {
-                                for (in.data.Tuple.items.items) |*item| {
-                                    if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                            try func_block.variables.put(call.var_out.name, call.var_out);
-                        }
-                    } else {
-                        if (call.var_out.data == .Void) { // Function with typed in and void out
-                            var in = call.var_in;
-                            if (in.data == .Tuple) {
-                                for (in.data.Tuple.items.items) |*item| {
-                                    if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                        } else { // Function with typed in and var out
-                            var in = call.var_in;
-                            if (in.data == .Tuple) {
-                                for (in.data.Tuple.items.items) |*item| {
-                                    if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                            try func_block.variables.put(call.var_out.name, call.var_out);
-                        }
-                    }
-                }
+            var state = RuntimeState.init(allocator, parsed.block);
+            defer state.deinit();
 
-                i += 1;
-            }
+            _ = try runBlock(&state, &state.block, null);
         }
 
-        fn runInternal(allocator: *mem.Allocator, assembly: Assembly, fnName: []const u8, var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void {
-            if (assembly.functions.get(fnName) == null) return error.FunctionNotFound;
-
-            var func_block = assembly.functions.get(fnName).?.block;
-
-            if (mem.eql(u8, var_in.name, "")) {
-                try func_block.variables.put(assembly.functions.get(fnName).?.var_in.name, var_in);
-                try func_block.variables.put(assembly.functions.get(fnName).?.var_out.name, var_out.*);
-            } else {
-                try func_block.variables.put(var_in.name, var_in);
-                try func_block.variables.put(var_out.name, var_out.*);
-            }
+        fn runBlock(state: *RuntimeState, block: *RuntimeState.Block, var_in: ?[]RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+            const ops = block.block.operations.items;
 
             var i: usize = 0;
-            while (i < func_block.calls.items.len) {
-                var call = &func_block.calls.items[i];
-                if (call.builtin) {
-                    if (mem.eql(u8, call.name, "jmp")) {
-                        var in = func_block.variables.get(call.var_in.name).?;
-                        if (in.data.Bool) {
-                            i = func_block.jmp_labels.get(call.var_out.data.String).?;
-                            continue;
-                        }
-                    } else if (mem.eql(u8, call.name, "if")) {
-                        var in = if (!mem.eql(u8, call.var_in.name, "")) func_block.variables.get(call.var_in.name).? else call.var_in;
-                        if (!in.data.Bool) i += @floatToInt(usize, call.var_out.data.Number);
-                    } else {
-                        if (!mem.eql(u8, call.var_in.name, "")) {
-                            if (call.var_out.data == .Void) { // Functions with var in and void out
-                                var in = func_block.variables.get(call.var_in.name).?;
-                                if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items.items) |*item| {
-                                        item.data = func_block.variables.get(item.name).?.data;
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                            } else { // Function with var in and var out
-                                var in = func_block.variables.get(call.var_in.name).?;
-                                if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items.items) |*item| {
-                                        if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                                try func_block.variables.put(call.var_out.name, call.var_out);
-                            }
-                        } else {
-                            if (call.var_out.data == .Void) { // Function with typed in and void out
-                                var in = call.var_in;
-                                if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items.items) |*item| {
-                                        if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                            } else { // Function with typed in and var out
-                                var in = call.var_in;
-                                if (in.data == .Tuple) {
-                                    for (in.data.Tuple.items.items) |*item| {
-                                        if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                    }
-                                }
-                                try @call(.{}, Builtins.get(call.name).?, .{ allocator, in, &call.var_out });
-                                try func_block.variables.put(call.var_out.name, call.var_out);
-                            }
-                        }
-                    }
-                } else {
-                    if (!mem.eql(u8, call.var_in.name, "")) {
-                        if (call.var_out.data == .Void) { // Functions with var in and void out
-                            var in = func_block.variables.get(call.var_in.name).?;
-                            if (in.data == .Tuple) {
-                                for (in.data.Tuple.items.items) |*item| {
-                                    item.data = func_block.variables.get(item.name).?.data;
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                        } else { // Function with var in and var out
-                            var in = func_block.variables.get(call.var_in.name).?;
-                            if (in.data == .Tuple) {
-                                for (in.data.Tuple.items.items) |*item| {
-                                    if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                            try func_block.variables.put(call.var_out.name, call.var_out);
-                        }
-                    } else {
-                        if (call.var_out.data == .Void) { // Function with typed in and void out
-                            var in = call.var_in;
-                            if (in.data == .Tuple) {
-                                for (in.data.Tuple.items.items) |*item| {
-                                    if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                        } else { // Function with typed in and var out
-                            var in = call.var_in;
-                            if (in.data == .Tuple) {
-                                for (in.data.Tuple.items.items) |*item| {
-                                    if (!mem.eql(u8, item.name, "")) item.data = func_block.variables.get(item.name).?.data;
-                                }
-                            }
-                            try runInternal(allocator, assembly, call.name, in, &call.var_out);
-                            try func_block.variables.put(call.var_out.name, call.var_out);
-                        }
-                    }
-                }
+            while (i < ops.len) {
+                switch (ops[i].kind) {
+                    .Decl => {
+                        const op = @fieldParentPtr(pa.Parsed.Operation.Decl, "base", ops[i]);
 
-                if (i == func_block.calls.items.len - 1) {
-                    var_out.data = call.var_out.data;
+                        switch (op.kind) {
+                            .Integer => for (op.decls) |decl| try block.variables.put(decl, .{ .Integer = undefined }),
+                            .Number => for (op.decls) |decl| try block.variables.put(decl, .{ .Number = undefined }),
+                            .String => for (op.decls) |decl| try block.variables.put(decl, .{ .String = undefined }),
+                            .Bool => for (op.decls) |decl| try block.variables.put(decl, .{ .Bool = undefined }),
+
+                            .Void => for (op.decls) |decl| try block.variables.put(decl, .{ .Void = {} }),
+
+                            .Block => for (op.decls) |decl| try block.variables.put(decl, .{ .Block = RuntimeState.Block.init(state.allocator) }),
+                        }
+                    },
+
+                    .Set => {
+                        const op = @fieldParentPtr(pa.Parsed.Operation.Set, "base", ops[i]);
+
+                        for (op.outputs) |out| {
+                            if (!block.variables.contains(out.name)) std.debug.panic("Variable `{}` does not exist", .{out.name});
+                            switch (op.input) {
+                                .Literal => |l| switch (l) {
+                                    .Integer => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Integer = l.Integer },
+                                    .Number => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Number = l.Number },
+                                    .String => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .String = l.String },
+                                    .Bool => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Bool = l.Bool },
+
+                                    .Void => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Void = {} },
+
+                                    .Block => block.variables.getEntry(out.name).?.value.Block.block = l.Block,
+                                },
+                                .Variable => |v| switch (block.variables.get(v.name).?) {
+                                    .Integer => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Integer = block.variables.get(v.name).?.Integer },
+                                    .Number => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Number = block.variables.get(v.name).?.Number },
+                                    .String => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .String = block.variables.get(v.name).?.String },
+                                    .Bool => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Bool = block.variables.get(v.name).?.Bool },
+
+                                    .Void => block.variables.getEntry(out.name).?.value = RuntimeState.Variable{ .Void = {} },
+
+                                    .Block => block.variables.getEntry(out.name).?.value.Block.block = block.variables.get(v.name).?.Block.block,
+                                },
+                                else => std.debug.panic("Not Supported Yet!", .{}),
+                            }
+                        }
+                    },
+
+                    .Call => _ = try runOpCall(state, block, ops[i]),
+
+                    else => std.debug.panic("Not Supported Yet!", .{}),
                 }
 
                 i += 1;
             }
 
-            _ = func_block.variables.remove(var_in.name);
-            _ = func_block.variables.remove(var_out.name);
+            return block.variables.get("out");
+        }
+
+        fn runOpCall(state: *RuntimeState, block: *RuntimeState.Block, opp: *pa.Parsed.Operation) anyerror!?RuntimeState.Variable {
+            const op = @fieldParentPtr(pa.Parsed.Operation.Call, "base", opp);
+
+            var inputs = std.ArrayList(RuntimeState.Variable).init(state.allocator);
+            defer inputs.deinit();
+            for (op.inputs) |input| switch (input) {
+                .Literal => |l| switch (l) {
+                    .Integer => |d| try inputs.append(.{ .Integer = d }),
+                    .Number => |d| try inputs.append(.{ .Number = d }),
+                    .String => |d| try inputs.append(.{ .String = d }),
+                    .Bool => |d| try inputs.append(.{ .Bool = d }),
+
+                    .Void => try inputs.append(.{ .Void = {} }),
+
+                    .Block => |d| try inputs.append(.{ .Block = RuntimeState.Block.initBlock(state.allocator, d) }),
+                },
+                .Variable => |v| {
+                    if (!state.block.variables.contains(v.name)) std.debug.panic("Variable `{}` not found!", .{v.name});
+                    try inputs.append(state.block.variables.get(v.name).?);
+                },
+
+                .Operation => try inputs.append((try runOpCall(state, block, input.Operation)) orelse .{ .Void = {} }),
+            };
+
+            const input_slice = inputs.toOwnedSlice();
+            if (Builtins.has(op.func)) {
+                return @call(.{}, Builtins.get(op.func).?, .{ state, input_slice });
+            } else if (block.variables.contains(op.func) and block.variables.get(op.func).? == .Block) {
+                return runBlock(state, &block.variables.getEntry(op.func).?.value.Block, null);
+            } else std.debug.panic("Function Not Found: {}", .{op.func});
+            state.allocator.free(input_slice);
         }
     };
 }
@@ -260,120 +171,157 @@ pub fn RuntimeBase(comptime Builtins: type) type {
 pub const SimpleRuntime = struct {
     pub const Builtins = std.ComptimeStringMap(BuiltinFn, .{
         .{ "print", print },
-        .{ "readline", readline },
-        .{ "set", set },
         .{ "add", add },
         .{ "sub", sub },
         .{ "mul", mul },
         .{ "div", div },
-        .{ "mod", mod },
-        .{ "gt", gt },
-        .{ "gte", gte },
-        .{ "lt", lt },
-        .{ "lte", lte },
-        .{ "eql", eql },
     });
 
-    fn print(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) anyerror!void {
-        switch (var_in.data) {
-            .String => try std.io.getStdOut().outStream().print("{}", .{var_in.data.String}),
-            .Number => try std.io.getStdOut().outStream().print("{d}", .{var_in.data.Number}),
-            .Bool => try std.io.getStdOut().outStream().print("{}", .{var_in.data.Bool}),
-            .Void => try std.io.getStdOut().outStream().print("\n", .{}),
-            .Tuple => {
-                try std.io.getStdOut().outStream().print("(", .{});
-                for (var_in.data.Tuple.items.items) |item, i| {
-                    try print(allocator, item, var_out);
+    fn print(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        for (var_in) |in| {
+            switch (in) {
+                .Integer => |d| try std.io.getStdOut().outStream().print("{d}", .{d}),
+                .Number => |d| try std.io.getStdOut().outStream().print("{d}", .{d}),
+                .String => |d| {
+                    if (mem.eql(u8, d, "\\n")) {
+                        try std.io.getStdOut().outStream().print("\n", .{});
+                    } else {
+                        try std.io.getStdOut().outStream().print("{}", .{d});
+                    }
+                },
+                .Bool => |d| try std.io.getStdOut().outStream().print("{}", .{d}),
 
-                    if (i != var_in.data.Tuple.items.items.len - 1) try std.io.getStdOut().outStream().print(", ", .{});
+                .Void => try std.io.getStdOut().outStream().print("\n", .{}),
+
+                else => std.debug.panic("Not Supported!", .{}),
+            }
+        }
+
+        return null;
+    }
+
+    fn add(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        switch (var_in[0]) {
+            .Integer => {
+                var sum = RuntimeState.Variable{ .Integer = var_in[0].Integer };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Integer += in.Integer,
+                        .Number => sum.Integer += @floatToInt(i64, in.Number),
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
                 }
-                try std.io.getStdOut().outStream().print(")", .{});
+                return sum;
             },
+            .Number => {
+                var sum = RuntimeState.Variable{ .Number = var_in[0].Number };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Number += @intToFloat(f64, in.Integer),
+                        .Number => sum.Number += in.Number,
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
+                }
+                return sum;
+            },
+
+            else => std.debug.panic("Not Supported!", .{}),
         }
     }
 
-    fn readline(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        const data = try std.io.getStdIn().inStream().readUntilDelimiterAlloc(allocator, 10, std.math.maxInt(u64));
-        var_out.data = switch (var_out.data) {
-            .String => .{ .String = data },
-            .Number => .{ .Number = try std.fmt.parseFloat(f64, data) },
-            else => return error.UnsupportedType,
-        };
+    fn sub(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        switch (var_in[0]) {
+            .Integer => {
+                var sum = RuntimeState.Variable{ .Integer = var_in[0].Integer };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Integer -= in.Integer,
+                        .Number => sum.Integer -= @floatToInt(i64, in.Number),
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
+                }
+                return sum;
+            },
+            .Number => {
+                var sum = RuntimeState.Variable{ .Number = var_in[0].Number };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Number -= @intToFloat(f64, in.Integer),
+                        .Number => sum.Number -= in.Number,
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
+                }
+                return sum;
+            },
+
+            else => std.debug.panic("Not Supported!", .{}),
+        }
     }
 
-    fn set(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        var_out.data = var_in.data;
+    fn mul(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        switch (var_in[0]) {
+            .Integer => {
+                var sum = RuntimeState.Variable{ .Integer = var_in[0].Integer };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Integer *= in.Integer,
+                        .Number => sum.Integer *= @floatToInt(i64, in.Number),
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
+                }
+                return sum;
+            },
+            .Number => {
+                var sum = RuntimeState.Variable{ .Number = var_in[0].Number };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Number *= @intToFloat(f64, in.Integer),
+                        .Number => sum.Number *= in.Number,
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
+                }
+                return sum;
+            },
+
+            else => std.debug.panic("Not Supported!", .{}),
+        }
     }
 
-    fn add(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number + var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
+    fn div(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        switch (var_in[0]) {
+            .Integer => {
+                var sum = RuntimeState.Variable{ .Integer = var_in[0].Integer };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Integer = @divFloor(sum.Integer, in.Integer),
+                        .Number => sum.Integer = @divFloor(sum.Integer, @floatToInt(i64, in.Number)),
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
+                }
+                return sum;
+            },
+            .Number => {
+                var sum = RuntimeState.Variable{ .Number = var_in[0].Number };
+                for (var_in) |in, i| {
+                    if (i == 0) continue;
+                    switch (in) {
+                        .Integer => sum.Number /= @intToFloat(f64, in.Integer),
+                        .Number => sum.Number /= in.Number,
+                        else => std.debug.panic("Not Supported!", .{}),
+                    }
+                }
+                return sum;
+            },
 
-    fn sub(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number - var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
-
-    fn mul(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number * var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
-
-    fn div(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Number = var_in.data.Tuple.items.items[0].data.Number / var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
-
-    fn mod(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Number = @mod(var_in.data.Tuple.items.items[0].data.Number, var_in.data.Tuple.items.items[1].data.Number);
-        } else return error.UnsupportedType;
-    }
-
-    fn gt(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number > var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
-
-    fn gte(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number >= var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
-
-    fn lt(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number < var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
-
-    fn lte(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number <= var_in.data.Tuple.items.items[1].data.Number;
-        } else return error.UnsupportedType;
-    }
-
-    fn eql(allocator: *mem.Allocator, var_in: Assembly.Variable, var_out: *Assembly.Variable) !void {
-        if (var_in.data == .Tuple) {
-            switch (var_in.data.Tuple.items.items[0].data) {
-                .String => {
-                    var_out.data.Bool = mem.eql(u8, var_in.data.Tuple.items.items[0].data.String, var_in.data.Tuple.items.items[1].data.String);
-                },
-                .Number => {
-                    var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Number == var_in.data.Tuple.items.items[1].data.Number;
-                },
-                .Bool => {
-                    var_out.data.Bool = var_in.data.Tuple.items.items[0].data.Bool == var_in.data.Tuple.items.items[1].data.Bool;
-                },
-                else => return error.NotSupportedYet,
-            }
-        } else return error.UnsupportedType;
+            else => std.debug.panic("Not Supported!", .{}),
+        }
     }
 
     usingnamespace RuntimeBase(Builtins);
