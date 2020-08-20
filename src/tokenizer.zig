@@ -21,7 +21,7 @@ fn cleanup(allocator: *mem.Allocator, code: []const u8) ![]const u8 {
         }
 
         if (char == 59) {
-            while (code[i + skip] != 10) {
+            while (i + skip < code.len and code[i + skip] != 10) {
                 skip += 1;
             }
             continue;
@@ -61,19 +61,19 @@ pub const Token = union(enum) {
     Integer: struct { string: []const u8, num: i64 },
     Number: struct { string: []const u8, num: f64 },
     Bool: bool,
+    Void: void,
+    Null: void,
     Ident: []const u8,
 
     CallSym: void,
-    DefSym: void,
     TypeSym: void,
     DeclSym: void,
     SetSym: void,
+    IfSym: void,
+    NullSym: void,
 
     Colon: void,
     Comma: void,
-    Tilda: void,
-
-    PutInto: void,
 
     TupleStart: void,
     TupleEnd: void,
@@ -81,8 +81,6 @@ pub const Token = union(enum) {
     BlockEnd: void,
     IndexStart: void,
     IndexEnd: void,
-
-    Void: void,
 
     None: void,
 
@@ -115,7 +113,7 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
         }
 
         // Tokenize Ident
-        if ((char >= 65 and char <= 90) or (char >= 97 and char <= 122)) {
+        if ((char >= 65 and char <= 90) or (char >= 97 and char <= 122) or char == 95) {
             if (curr_token == .None) {
                 curr_token = .{ .Ident = try mem.join(allocator, "", &[_][]const u8{ "", &[_]u8{char} }) };
                 continue;
@@ -132,6 +130,12 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
             } else if (mem.eql(u8, curr_token.Ident, "true")) {
                 allocator.free(curr_token.Ident);
                 try tokens.append(.{ .Bool = true });
+            } else if (mem.eql(u8, curr_token.Ident, "void")) {
+                allocator.free(curr_token.Ident);
+                try tokens.append(.{ .Void = {} });
+            } else if (mem.eql(u8, curr_token.Ident, "null")) {
+                allocator.free(curr_token.Ident);
+                try tokens.append(.{ .Null = {} });
             } else {
                 try tokens.append(curr_token);
             }
@@ -141,7 +145,7 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
         // Tokenize String
         if (char == 34) {
             if (curr_token == .None) {
-                curr_token = .{ .String = try mem.join(allocator, "", &[_][]const u8{ "" }) };
+                curr_token = .{ .String = try mem.join(allocator, "", &[_][]const u8{""}) };
                 continue;
             } else if (curr_token == .String) {
                 try tokens.append(curr_token);
@@ -149,7 +153,7 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
                 continue;
             }
         }
-        if ((char >= 35 and char <= 126) or char == 32 or char == 33) {
+        if ((char >= 35 and char <= 126) or char == 32 or char == 33 or char == 10 or char == 9) {
             if (curr_token == .String) {
                 if (char == 92) {
                     skip += 1;
@@ -182,7 +186,7 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
                     allocator.free(curr_token.Integer.string);
                     curr_token = .{ .Number = .{ .string = tmp, .num = 0 } };
                     continue;
-                } 
+                }
             } else {
                 if (curr_token == .None) {
                     curr_token = .{ .Integer = .{ .string = try mem.join(allocator, "", &[_][]const u8{ "", &[_]u8{char} }), .num = 0 } };
@@ -209,20 +213,14 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
             curr_token = .{ .None = {} };
         }
 
-        // Tokenize @
-        if (char == 64) {
-            try tokens.append(Token{ .DefSym = {} });
-            continue;
-        }
-
         // Tokenize !
         if (char == 33) {
             try tokens.append(Token{ .CallSym = {} });
             continue;
         }
 
-        // Tokenize %
-        if (char == 37) {
+        // Tokenize @
+        if (char == 64) {
             try tokens.append(Token{ .DeclSym = {} });
             continue;
         }
@@ -236,6 +234,18 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
         // Tokenize ~
         if (char == 126) {
             try tokens.append(Token{ .SetSym = {} });
+            continue;
+        }
+
+        // Tokenize &
+        if (char == 38) {
+            try tokens.append(Token{ .IfSym = {} });
+            continue;
+        }
+
+        // Tokenize ?
+        if (char == 63) {
+            try tokens.append(Token{ .NullSym = {} });
             continue;
         }
 
@@ -293,13 +303,7 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
             continue;
         }
 
-        // Tokenize _
-        if (char == 95) {
-            try tokens.append(Token{ .Void = {} });
-            continue;
-        }
-
-        std.debug.panic("Invalid Token: {c},{}, {}, {}\n", .{char, char, i, curr_token});
+        std.debug.panic("Invalid Token: {c},{}, {}, {}\n", .{ char, char, i, curr_token });
     }
 
     return tokens.toOwnedSlice();
