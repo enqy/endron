@@ -69,16 +69,17 @@ pub const Token = union(enum) {
     DeclSym: void,
     SetSym: void,
     IfSym: void,
+    WhileSym: void,
 
     Colon: void,
     Comma: void,
 
-    TupleStart: void,
-    TupleEnd: void,
-    BlockStart: void,
-    BlockEnd: void,
-    IndexStart: void,
-    IndexEnd: void,
+    LParen: void,
+    RParen: void,
+    LBrace: void,
+    RBrace: void,
+    LBracket: void,
+    RBracket: void,
 
     None: void,
 
@@ -238,6 +239,12 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
             continue;
         }
 
+        // Tokenize ^
+        if (char == 94) {
+            try tokens.append(Token{ .WhileSym = {} });
+            continue;
+        }
+
         // Tokenize :
         if (char == 58) {
             try tokens.append(Token{ .Colon = {} });
@@ -258,37 +265,37 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
 
         // Tokenize (
         if (char == 40) {
-            try tokens.append(Token{ .TupleStart = {} });
+            try tokens.append(Token{ .LParen = {} });
             continue;
         }
 
         // Tokenize )
         if (char == 41) {
-            try tokens.append(Token{ .TupleEnd = {} });
+            try tokens.append(Token{ .RParen = {} });
             continue;
         }
 
         // Tokenize {
         if (char == 123) {
-            try tokens.append(Token{ .BlockStart = {} });
+            try tokens.append(Token{ .LBrace = {} });
             continue;
         }
 
         // Tokenize }
         if (char == 125) {
-            try tokens.append(Token{ .BlockEnd = {} });
+            try tokens.append(Token{ .RBrace = {} });
             continue;
         }
 
         // Tokenize [
         if (char == 91) {
-            try tokens.append(Token{ .IndexStart = {} });
+            try tokens.append(Token{ .LBracket = {} });
             continue;
         }
 
         // Tokenize ]
         if (char == 93) {
-            try tokens.append(Token{ .IndexEnd = {} });
+            try tokens.append(Token{ .RBracket = {} });
             continue;
         }
 

@@ -130,74 +130,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                     .If => {
                         const op = @fieldParentPtr(pa.Parsed.Operation.If, "base", ops[i]);
 
-                        var ifelse = false;
-                        switch (op.input) {
-                            .Literal => |il| {
-                                switch (op.comp) {
-                                    .Literal => |cl| {
-                                        if (@enumToInt(il) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ il, cl });
-                                        switch (il) {
-                                            .Integer => ifelse = (il.Integer == cl.Integer),
-                                            .Number => ifelse = (il.Number == cl.Number),
-                                            .String => ifelse = mem.eql(u8, il.String, cl.String),
-                                            .Bool => ifelse = (il.Bool == cl.Bool),
-
-                                            else => std.debug.panic("Not Supported!", .{}),
-                                        }
-                                    },
-                                    .Variable => |cv| {
-                                        if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
-                                        if (@enumToInt(il) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ il, block.variables.get(cv.name).? });
-                                        const cd = block.variables.get(cv.name).?;
-                                        switch (il) {
-                                            .Integer => ifelse = (il.Integer == cd.Integer),
-                                            .Number => ifelse = (il.Number == cd.Number),
-                                            .String => ifelse = mem.eql(u8, il.String, cd.String),
-                                            .Bool => ifelse = (il.Bool == cd.Bool),
-
-                                            else => std.debug.panic("Not Supported!", .{}),
-                                        }
-                                    },
-                                    else => std.debug.panic("Not Supported Yet!", .{}),
-                                }
-                            },
-                            .Variable => |iv| {
-                                switch (op.comp) {
-                                    .Literal => |cl| {
-                                        if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
-                                        if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, cl });
-                                        const id = block.variables.get(iv.name).?;
-                                        switch (id) {
-                                            .Integer => ifelse = (id.Integer == cl.Integer),
-                                            .Number => ifelse = (id.Number == cl.Number),
-                                            .String => ifelse = mem.eql(u8, id.String, cl.String),
-                                            .Bool => ifelse = (id.Bool == cl.Bool),
-
-                                            else => std.debug.panic("Not Supported!", .{}),
-                                        }
-                                    },
-                                    .Variable => |cv| {
-                                        if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
-                                        if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
-                                        if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, block.variables.get(cv.name).? });
-                                        const id = block.variables.get(iv.name).?;
-                                        const cd = block.variables.get(cv.name).?;
-                                        switch (id) {
-                                            .Integer => ifelse = (id.Integer == cd.Integer),
-                                            .Number => ifelse = (id.Number == cd.Number),
-                                            .String => ifelse = mem.eql(u8, id.String, cd.String),
-                                            .Bool => ifelse = (id.Bool == cd.Bool),
-
-                                            else => std.debug.panic("Not Supported!", .{}),
-                                        }
-                                    },
-                                    else => std.debug.panic("Not Supported Yet!", .{}),
-                                }
-                            },
-                            else => std.debug.panic("Not Supported Yet!", .{}),
-                        }
-
-                        if (ifelse) {
+                        if (try checkCond(state, block, op.input, op.comp)) {
                             var ifelseblock = RuntimeState.Block.initBlock(state.allocator, op.ifblock);
                             defer ifelseblock.deinit();
                             const var_out = (try runBlock(state, &ifelseblock, block.variables.items())).items();
@@ -215,12 +148,158 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             }
                         }
                     },
+                    .While => {
+                        const op = @fieldParentPtr(pa.Parsed.Operation.While, "base", ops[i]);
+
+                        while (try checkCond(state, block, op.input, op.comp)) {
+                            var whileblock = RuntimeState.Block.initBlock(state.allocator, op.block);
+                            defer whileblock.deinit();
+                            const var_out = (try runBlock(state, &whileblock, block.variables.items())).items();
+                            for (var_out) |out| {
+                                try block.variables.put(out.key, out.value);
+                            }
+                        }
+                    },
                 }
 
                 i += 1;
             }
 
             return block.variables;
+        }
+
+        fn checkCond(state: *RuntimeState, block: *RuntimeState.Block, lhs: pa.Parsed.Operation.Input, rhs: pa.Parsed.Operation.Input) !bool {
+            switch (lhs) {
+                .Literal => |il| {
+                    switch (rhs) {
+                        .Literal => |cl| {
+                            if (@enumToInt(il) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ il, cl });
+                            switch (il) {
+                                .Integer => return (il.Integer == cl.Integer),
+                                .Number => return (il.Number == cl.Number),
+                                .String => return mem.eql(u8, il.String, cl.String),
+                                .Bool => return (il.Bool == cl.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                        .Variable => |cv| {
+                            if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
+                            if (@enumToInt(il) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ il, block.variables.get(cv.name).? });
+                            const cd = block.variables.get(cv.name).?;
+                            switch (il) {
+                                .Integer => return (il.Integer == cd.Integer),
+                                .Number => return (il.Number == cd.Number),
+                                .String => return mem.eql(u8, il.String, cd.String),
+                                .Bool => return (il.Bool == cd.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                        .Operation => |co| {
+                            const cd = (try runOpCall(state, block, co)) orelse std.debug.panic("Function does not return anything!", .{});
+                            if (@enumToInt(il) != @enumToInt(cd)) std.debug.panic("If types {} and {} are not equal!", .{ il, cd });
+                            switch (il) {
+                                .Integer => return (il.Integer == cd.Integer),
+                                .Number => return (il.Number == cd.Number),
+                                .String => return mem.eql(u8, il.String, cd.String),
+                                .Bool => return (il.Bool == cd.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                    }
+                },
+                .Variable => |iv| {
+                    switch (rhs) {
+                        .Literal => |cl| {
+                            if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
+                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, cl });
+                            const id = block.variables.get(iv.name).?;
+                            switch (id) {
+                                .Integer => return (id.Integer == cl.Integer),
+                                .Number => return (id.Number == cl.Number),
+                                .String => return mem.eql(u8, id.String, cl.String),
+                                .Bool => return (id.Bool == cl.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                        .Variable => |cv| {
+                            if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
+                            if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
+                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, block.variables.get(cv.name).? });
+                            const id = block.variables.get(iv.name).?;
+                            const cd = block.variables.get(cv.name).?;
+                            switch (id) {
+                                .Integer => return (id.Integer == cd.Integer),
+                                .Number => return (id.Number == cd.Number),
+                                .String => return mem.eql(u8, id.String, cd.String),
+                                .Bool => return (id.Bool == cd.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                        .Operation => |co| {
+                            if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
+                            const cd = (try runOpCall(state, block, co)) orelse std.debug.panic("Function does not return anything!", .{});
+                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cd)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, cd });
+                            const id = block.variables.get(iv.name).?;
+                            switch (id) {
+                                .Integer => return (id.Integer == cd.Integer),
+                                .Number => return (id.Number == cd.Number),
+                                .String => return mem.eql(u8, id.String, cd.String),
+                                .Bool => return (id.Bool == cd.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                    }
+                },
+                .Operation => |io| {
+                    switch (rhs) {
+                        .Literal => |cl| {
+                            const id = (try runOpCall(state, block, io)) orelse std.debug.panic("Function does not return anything!", .{});
+                            if (@enumToInt(id) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ id, cl });
+                            switch (id) {
+                                .Integer => return (id.Integer == cl.Integer),
+                                .Number => return (id.Number == cl.Number),
+                                .String => return mem.eql(u8, id.String, cl.String),
+                                .Bool => return (id.Bool == cl.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                        .Variable => |cv| {
+                            const id = (try runOpCall(state, block, io)) orelse std.debug.panic("Function does not return anything!", .{});
+                            if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
+                            if (@enumToInt(id) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ id, block.variables.get(cv.name).? });
+                            const cd = block.variables.get(cv.name).?;
+                            switch (id) {
+                                .Integer => return (id.Integer == cd.Integer),
+                                .Number => return (id.Number == cd.Number),
+                                .String => return mem.eql(u8, id.String, cd.String),
+                                .Bool => return (id.Bool == cd.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                        .Operation => |co| {
+                            const id = (try runOpCall(state, block, io)) orelse std.debug.panic("Function does not return anything!", .{});
+                            const cd = (try runOpCall(state, block, co)) orelse std.debug.panic("Function does not return anything!", .{});
+                            if (@enumToInt(id) != @enumToInt(cd)) std.debug.panic("If types {} and {} are not equal!", .{ id, cd });
+                            switch (id) {
+                                .Integer => return (id.Integer == cd.Integer),
+                                .Number => return (id.Number == cd.Number),
+                                .String => return mem.eql(u8, id.String, cd.String),
+                                .Bool => return (id.Bool == cd.Bool),
+
+                                else => std.debug.panic("Not Supported!", .{}),
+                            }
+                        },
+                    }
+                },
+            }
         }
 
         fn runOpCall(state: *RuntimeState, block: *RuntimeState.Block, opp: *pa.Parsed.Operation) anyerror!?RuntimeState.Variable {
@@ -258,7 +337,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                 var block_inputs = try block.variables.clone();
                 defer block_inputs.deinit();
                 for (input_slice) |in, i| {
-                    if (opblock.block.var_in.items()[i].value != in) std.debug.panic("Type mismatch between {} and {}", .{opblock.block.var_in.items()[i].value, in});
+                    if (opblock.block.var_in.items()[i].value != in) std.debug.panic("Type mismatch between {} and {}", .{ opblock.block.var_in.items()[i].value, in });
                     try block_inputs.put(opblock.block.var_in.items()[i].key, in);
                 }
 
@@ -275,13 +354,17 @@ pub fn RuntimeBase(comptime Builtins: type) type {
 pub const SimpleRuntime = struct {
     pub const Builtins = std.ComptimeStringMap(BuiltinFn, .{
         .{ "print", print },
+        .{ "readline", readline },
+        .{ "readlineInt", readlineInt },
+        .{ "readlineNum", readlineNum },
         .{ "add", add },
         .{ "sub", sub },
         .{ "mul", mul },
         .{ "div", div },
-        .{ "readline", readline },
-        .{ "readlineInt", readlineInt },
-        .{ "readlineNum", readlineNum },
+        .{ "gt", gt },
+        .{ "gte", gte },
+        .{ "lt", lt },
+        .{ "lte", lte },
     });
 
     fn print(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
@@ -440,6 +523,110 @@ pub const SimpleRuntime = struct {
                     }
                 }
                 return sum;
+            },
+
+            else => std.debug.panic("Not Supported!", .{}),
+        }
+    }
+
+    fn gt(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        if (var_in.len != 2) std.debug.panic("Expected 2 arguments!", .{});
+        switch (var_in[0]) {
+            .Integer => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Integer > var_in[1].Integer,
+                    .Number => res.Bool = var_in[0].Integer > @floatToInt(i64, var_in[1].Number),
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
+            },
+            .Number => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Number > @intToFloat(f64, var_in[1].Integer),
+                    .Number => res.Bool = var_in[0].Number > var_in[1].Number,
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
+            },
+
+            else => std.debug.panic("Not Supported!", .{}),
+        }
+    }
+
+    fn gte(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        if (var_in.len != 2) std.debug.panic("Expected 2 arguments!", .{});
+        switch (var_in[0]) {
+            .Integer => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Integer >= var_in[1].Integer,
+                    .Number => res.Bool = var_in[0].Integer >= @floatToInt(i64, var_in[1].Number),
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
+            },
+            .Number => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Number >= @intToFloat(f64, var_in[1].Integer),
+                    .Number => res.Bool = var_in[0].Number >= var_in[1].Number,
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
+            },
+
+            else => std.debug.panic("Not Supported!", .{}),
+        }
+    }
+
+    fn lt(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        if (var_in.len != 2) std.debug.panic("Expected 2 arguments!", .{});
+        switch (var_in[0]) {
+            .Integer => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Integer < var_in[1].Integer,
+                    .Number => res.Bool = var_in[0].Integer < @floatToInt(i64, var_in[1].Number),
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
+            },
+            .Number => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Number < @intToFloat(f64, var_in[1].Integer),
+                    .Number => res.Bool = var_in[0].Number < var_in[1].Number,
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
+            },
+
+            else => std.debug.panic("Not Supported!", .{}),
+        }
+    }
+
+    fn lte(state: *RuntimeState, var_in: []const RuntimeState.Variable) anyerror!?RuntimeState.Variable {
+        if (var_in.len != 2) std.debug.panic("Expected 2 arguments!", .{});
+        switch (var_in[0]) {
+            .Integer => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Integer <= var_in[1].Integer,
+                    .Number => res.Bool = var_in[0].Integer <= @floatToInt(i64, var_in[1].Number),
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
+            },
+            .Number => {
+                var res = RuntimeState.Variable{ .Bool = false };
+                switch (var_in[1]) {
+                    .Integer => res.Bool = var_in[0].Number <= @intToFloat(f64, var_in[1].Integer),
+                    .Number => res.Bool = var_in[0].Number <= var_in[1].Number,
+                    else => std.debug.panic("Not Supported!", .{}),
+                }
+                return res;
             },
 
             else => std.debug.panic("Not Supported!", .{}),

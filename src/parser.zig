@@ -10,6 +10,7 @@ pub const Parsed = struct {
             Set,
             Call,
             If,
+            While,
         };
 
         kind: Kind,
@@ -49,6 +50,15 @@ pub const Parsed = struct {
 
             ifblock: Block,
             elseblock: ?Block,
+        };
+
+        pub const While = struct {
+            base: Operation = .{ .kind = .While },
+
+            input: Input,
+            comp: Input,
+
+            block: Block,
         };
     };
 
@@ -138,7 +148,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
             .DeclSym => {
                 i += 1;
 
-                if (tokens[i] != .TupleStart) std.debug.panic("Expected TupleStart `(` token, found {} at index {}", .{ tokens[i], i });
+                if (tokens[i] != .LParen) std.debug.panic("Expected LParen `(` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
 
                 const operation = try allocator.create(Parsed.Operation.Decl);
@@ -173,7 +183,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
                         else => std.debug.panic("Expected Ident or Comma `,` token, found {} at index {}", .{ tokens[i], i }),
                     }
                     i += 1;
-                    if (tokens[i] == .TupleEnd) break;
+                    if (tokens[i] == .RParen) break;
                 }
                 operation.*.decls = decls.toOwnedSlice();
                 i += 1;
@@ -187,7 +197,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
             .SetSym => {
                 i += 1;
 
-                if (tokens[i] != .TupleStart) std.debug.panic("Expected TupleStart `(` token, found {} at index {}", .{ tokens[i], i });
+                if (tokens[i] != .LParen) std.debug.panic("Expected LParen `(` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
 
                 const operation = try allocator.create(Parsed.Operation.Set);
@@ -203,13 +213,13 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
 
                     .Void => operation.*.input = .{ .Literal = .{ .Void = {} } },
 
-                    .BlockStart => {
+                    .LBrace => {
                         var end: usize = 1;
                         var seen_start = false;
                         while (i + end < blockEnd) {
-                            if (tokens[i + end] == .BlockEnd and !seen_start) break;
-                            if (tokens[i + end] == .BlockStart) seen_start = true;
-                            if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
+                            if (tokens[i + end] == .RBrace and !seen_start) break;
+                            if (tokens[i + end] == .LBrace) seen_start = true;
+                            if (tokens[i + end] == .RBrace and seen_start) seen_start = false;
                             end += 1;
                         }
                         operation.*.input = .{ .Literal = .{ .Block = try parseBlock(allocator, tokens, i + 1, i + end) } };
@@ -218,7 +228,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
 
                     .CallSym => operation.*.input = .{ .Operation = try parseOpCall(allocator, tokens, &i) },
 
-                    else => std.debug.panic("Expected CallSym `!`, Ident, BlockStart `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
+                    else => std.debug.panic("Expected CallSym `!`, Ident, LBrace `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
                 }
                 i += 1;
 
@@ -235,7 +245,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
                         else => std.debug.panic("Expected Ident or Comma `,` token, found {} at index {}", .{ tokens[i], i }),
                     }
                     i += 1;
-                    if (tokens[i] == .TupleEnd) break;
+                    if (tokens[i] == .RParen) break;
                 }
                 operation.*.outputs = outputs.toOwnedSlice();
                 i += 1;
@@ -249,7 +259,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
             .IfSym => {
                 i += 1;
 
-                if (tokens[i] != .TupleStart) std.debug.panic("Expected TupleStart `(` token, found {} at index {}", .{ tokens[i], i });
+                if (tokens[i] != .LParen) std.debug.panic("Expected LParen `(` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
 
                 const operation = try allocator.create(Parsed.Operation.If);
@@ -265,7 +275,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
 
                     .CallSym => operation.*.input = .{ .Operation = try parseOpCall(allocator, tokens, &i) },
 
-                    else => std.debug.panic("Expected CallSym `!`, Ident, BlockStart `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
+                    else => std.debug.panic("Expected CallSym `!`, Ident, LBrace `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
                 }
                 i += 1;
 
@@ -282,45 +292,107 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
 
                     .CallSym => operation.*.comp = .{ .Operation = try parseOpCall(allocator, tokens, &i) },
 
-                    else => std.debug.panic("Expected CallSym `!`, Ident, BlockStart `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
+                    else => std.debug.panic("Expected CallSym `!`, Ident, LBrace `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
                 }
                 i += 1;
 
                 if (tokens[i] != .Comma) std.debug.panic("Expected Comma `,` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
 
-                if (tokens[i] == .BlockStart) {
+                if (tokens[i] == .LBrace) {
                     var end: usize = 1;
                     var seen_start = false;
                     while (i + end < blockEnd) {
-                        if (tokens[i + end] == .BlockEnd and !seen_start) break;
-                        if (tokens[i + end] == .BlockStart) seen_start = true;
-                        if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
+                        if (tokens[i + end] == .RBrace and !seen_start) break;
+                        if (tokens[i + end] == .LBrace) seen_start = true;
+                        if (tokens[i + end] == .RBrace and seen_start) seen_start = false;
                         end += 1;
                     }
                     operation.*.ifblock = try parseBlock(allocator, tokens, i + 1, i + end);
                     i += end;
-                } else std.debug.panic("Expected BlockStart `{{` token, found {} at index {}", .{ tokens[i], i });
+                } else std.debug.panic("Expected LBrace `{{` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
 
                 if (tokens[i] == .Comma) {
                     i += 1;
-                    if (tokens[i] == .BlockStart) {
+                    if (tokens[i] == .LBrace) {
                         var end: usize = 1;
                         var seen_start = false;
                         while (i + end < blockEnd) {
-                            if (tokens[i + end] == .BlockEnd and !seen_start) break;
-                            if (tokens[i + end] == .BlockStart) seen_start = true;
-                            if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
+                            if (tokens[i + end] == .RBrace and !seen_start) break;
+                            if (tokens[i + end] == .LBrace) seen_start = true;
+                            if (tokens[i + end] == .RBrace and seen_start) seen_start = false;
                             end += 1;
                         }
                         operation.*.elseblock = try parseBlock(allocator, tokens, i + 1, i + end);
                         i += end;
-                    } else std.debug.panic("Expected BlockStart `{{` token, found {} at index {}", .{ tokens[i], i });
+                    } else std.debug.panic("Expected LBrace `{{` token, found {} at index {}", .{ tokens[i], i });
                     i += 1;
                 }
 
-                if (tokens[i] != .TupleEnd) std.debug.panic("Expected TupleEnd `)` token, found {} at index {}", .{ tokens[i], i });
+                if (tokens[i] != .RParen) std.debug.panic("Expected RParen `)` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                try block.operations.append(&operation.base);
+            },
+            .WhileSym => {
+                i += 1;
+
+                if (tokens[i] != .LParen) std.debug.panic("Expected LParen `(` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                const operation = try allocator.create(Parsed.Operation.While);
+                operation.*.base = .{ .kind = .While };
+
+                switch (tokens[i]) {
+                    .Ident => operation.*.input = .{ .Variable = .{ .name = tokens[i].Ident, .kind = null } },
+
+                    .Integer => operation.*.input = .{ .Literal = .{ .Integer = tokens[i].Integer.num } },
+                    .Number => operation.*.input = .{ .Literal = .{ .Number = tokens[i].Number.num } },
+                    .String => operation.*.input = .{ .Literal = .{ .String = tokens[i].String } },
+                    .Bool => operation.*.input = .{ .Literal = .{ .Bool = tokens[i].Bool } },
+
+                    .CallSym => operation.*.input = .{ .Operation = try parseOpCall(allocator, tokens, &i) },
+
+                    else => std.debug.panic("Expected CallSym `!`, Ident, LBrace `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
+                }
+                i += 1;
+
+                if (tokens[i] != .Comma) std.debug.panic("Expected Comma `,` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                switch (tokens[i]) {
+                    .Ident => operation.*.comp = .{ .Variable = .{ .name = tokens[i].Ident, .kind = null } },
+
+                    .Integer => operation.*.comp = .{ .Literal = .{ .Integer = tokens[i].Integer.num } },
+                    .Number => operation.*.comp = .{ .Literal = .{ .Number = tokens[i].Number.num } },
+                    .String => operation.*.comp = .{ .Literal = .{ .String = tokens[i].String } },
+                    .Bool => operation.*.comp = .{ .Literal = .{ .Bool = tokens[i].Bool } },
+
+                    .CallSym => operation.*.comp = .{ .Operation = try parseOpCall(allocator, tokens, &i) },
+
+                    else => std.debug.panic("Expected CallSym `!`, Ident, LBrace `{{`, or Literal token, found {} at index {}", .{ tokens[i], i }),
+                }
+                i += 1;
+
+                if (tokens[i] != .Comma) std.debug.panic("Expected Comma `,` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                if (tokens[i] == .LBrace) {
+                    var end: usize = 1;
+                    var seen_start = false;
+                    while (i + end < blockEnd) {
+                        if (tokens[i + end] == .RBrace and !seen_start) break;
+                        if (tokens[i + end] == .LBrace) seen_start = true;
+                        if (tokens[i + end] == .RBrace and seen_start) seen_start = false;
+                        end += 1;
+                    }
+                    operation.*.block = try parseBlock(allocator, tokens, i + 1, i + end);
+                    i += end;
+                } else std.debug.panic("Expected LBrace `{{` token, found {} at index {}", .{ tokens[i], i });
+                i += 1;
+
+                if (tokens[i] != .RParen) std.debug.panic("Expected RParen `)` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
 
                 try block.operations.append(&operation.base);
@@ -336,7 +408,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
 fn parseOpCall(allocator: *mem.Allocator, tokens: []const tk.Token, i: *usize) anyerror!*Parsed.Operation {
     i.* += 1;
 
-    if (tokens[i.*] != .TupleStart) std.debug.panic("Expected TupleStart `(` token, found {} at index {}", .{ tokens[i.*], i.* });
+    if (tokens[i.*] != .LParen) std.debug.panic("Expected LParen `(` token, found {} at index {}", .{ tokens[i.*], i.* });
     i.* += 1;
 
     const operation = try allocator.create(Parsed.Operation.Call);
@@ -368,7 +440,7 @@ fn parseOpCall(allocator: *mem.Allocator, tokens: []const tk.Token, i: *usize) a
             else => std.debug.panic("Expected CallSym `!`, Ident, Literal, or Comma `,` token, found {} at index {}", .{ tokens[i.*], i.* }),
         }
         i.* += 1;
-        if (tokens[i.*] == .TupleEnd) break;
+        if (tokens[i.*] == .RParen) break;
     }
     operation.*.inputs = inputs.toOwnedSlice();
 
