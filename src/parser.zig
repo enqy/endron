@@ -81,10 +81,14 @@ pub const Parsed = struct {
     };
 
     pub const Block = struct {
+        var_in: std.StringHashMap(Variable.Kind),
+        var_out: ?Variable,
         operations: std.ArrayList(*Operation),
 
         fn init(allocator: *mem.Allocator) Block {
             return Block{
+                .var_in = std.StringHashMap(Variable.Kind).init(allocator),
+                .var_out = null,
                 .operations = std.ArrayList(*Operation).init(allocator),
             };
         }
@@ -113,8 +117,6 @@ const BuiltinTypeMap = std.ComptimeStringMap(Parsed.Variable.Kind, .{
     .{ "num", Parsed.Variable.Kind.Number },
     .{ "str", Parsed.Variable.Kind.String },
     .{ "bool", Parsed.Variable.Kind.Bool },
-
-    .{ "void", Parsed.Variable.Kind.Void },
 
     .{ "block", Parsed.Variable.Kind.Block },
 });
@@ -156,7 +158,16 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
                 defer decls.deinit();
                 while (true) {
                     switch (tokens[i]) {
-                        .Ident => try decls.append(tokens[i].Ident),
+                        .Ident => if (mem.startsWith(u8, tokens[i].Ident, "__")) {
+                            try block.var_in.put(tokens[i].Ident, operation.*.kind);
+                        } else if (mem.startsWith(u8, tokens[i].Ident, "_")) {
+                            if (block.var_out == null) {
+                                block.var_out = .{ .name = tokens[i].Ident, .kind = operation.*.kind };
+                                try decls.append(tokens[i].Ident);
+                            } else std.debug.panic("Out variable already exists!", .{});
+                        } else {
+                            try decls.append(tokens[i].Ident);
+                        },
 
                         .Comma => {},
                         else => std.debug.panic("Expected Ident or Comma `,` token, found {} at index {}", .{ tokens[i], i }),
@@ -167,6 +178,10 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
                 operation.*.decls = decls.toOwnedSlice();
                 i += 1;
 
+                if (operation.*.decls.len == 0) {
+                    allocator.destroy(operation);
+                    continue;
+                }
                 try block.operations.append(&operation.base);
             },
             .SetSym => {
@@ -276,13 +291,13 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
 
                 if (tokens[i] == .BlockStart) {
                     var end: usize = 1;
-                        var seen_start = false;
-                        while (i + end < blockEnd) {
-                            if (tokens[i + end] == .BlockEnd and !seen_start) break;
-                            if (tokens[i + end] == .BlockStart) seen_start = true;
-                            if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
-                            end += 1;
-                        }
+                    var seen_start = false;
+                    while (i + end < blockEnd) {
+                        if (tokens[i + end] == .BlockEnd and !seen_start) break;
+                        if (tokens[i + end] == .BlockStart) seen_start = true;
+                        if (tokens[i + end] == .BlockEnd and seen_start) seen_start = false;
+                        end += 1;
+                    }
                     operation.*.ifblock = try parseBlock(allocator, tokens, i + 1, i + end);
                     i += end;
                 } else std.debug.panic("Expected BlockStart `{{` token, found {} at index {}", .{ tokens[i], i });

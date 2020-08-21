@@ -1,0 +1,15 @@
+@($block, add_twice)
+~({
+    @($num, __x)
+    @($int, __y)
+    @($num, _out)
+
+   ~(!(add, __x, __y), _out)
+}, add_twice)
+
+@($block, main)
+~({
+    !(print, !(add_twice, 2.0, 3))
+}, main)
+
+!(main, void)
