@@ -136,7 +136,47 @@ pub fn parse(allocator: *mem.Allocator, tokens: []const tk.Token) !Parsed {
     var block = try parseBlock(&arena.allocator, tokens, 0, tokens.len);
     var parsed = Parsed.init(arena, block);
 
+    (try typeCheckBlock(allocator, &parsed, &parsed.block)).deinit();
+
     return parsed;
+}
+
+fn typeCheckBlock(allocator: *mem.Allocator, parsed: *Parsed, block: *Parsed.Block) !std.StringHashMap(Parsed.Variable.Kind) {
+    var variables = std.StringHashMap(Parsed.Variable.Kind).init(allocator);
+
+    for (block.operations.items) |opp| {
+        switch (opp.kind) {
+            .Decl => {
+                const op = @fieldParentPtr(Parsed.Operation.Decl, "base", opp);
+                for (op.decls) |decl| try variables.put(decl, op.kind);
+            },
+            .Set => {
+                const op = @fieldParentPtr(Parsed.Operation.Set, "base", opp);
+                for (op.outputs) |out| {
+                    if (!variables.contains(out.name)) std.debug.panic("Variable {} does not exist!", .{out.name});
+                    switch (op.input) {
+                        .Literal => |l| {
+                            if (@enumToInt(variables.get(out.name).?) != @enumToInt(l))
+                                std.debug.panic("Type mismatch between {} and {}!", .{ variables.get(out.name).?, l });
+                        },
+                        .Variable => |v| {
+                            if (!variables.contains(v.name)) std.debug.panic("Variable {} does not exist!", .{v.name});
+                            if (@enumToInt(variables.get(out.name).?) != @enumToInt(variables.get(v.name).?))
+                                std.debug.panic("Type mismatch between {} and {}!", .{ variables.get(out.name).?, variables.get(v.name).? });
+                        },
+                        .Operation => {},
+                    }
+                }
+            },
+            else => {},
+        }
+    }
+
+    for (variables.items()) |entry| {
+        std.debug.print("{}: {}\n", .{ entry.key, entry.value });
+    }
+
+    return variables;
 }
 
 fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: usize, blockEnd: usize) anyerror!Parsed.Block {
