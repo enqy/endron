@@ -1,3 +1,9 @@
+@($block, test)
+~({
+    @($int, __x)
+    @($int, _out)
+    ~(__x, _out)
+}, test)
+
 @($int, x)
-@($int, y)
-~(y, x)
+~(!(test, 2), x)
