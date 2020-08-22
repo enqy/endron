@@ -86,14 +86,14 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         const op = @fieldParentPtr(pa.Parsed.Operation.Decl, "base", ops[i]);
 
                         switch (op.kind) {
-                            .Integer => for (op.decls) |decl| try block.variables.put(decl, .{ .Integer = undefined }),
-                            .Number => for (op.decls) |decl| try block.variables.put(decl, .{ .Number = undefined }),
-                            .String => for (op.decls) |decl| try block.variables.put(decl, .{ .String = undefined }),
-                            .Bool => for (op.decls) |decl| try block.variables.put(decl, .{ .Bool = undefined }),
+                            .Integer => for (op.decls) |decl| if (!mem.startsWith(u8, decl, "__")) try block.variables.put(decl, .{ .Integer = undefined }),
+                            .Number => for (op.decls) |decl| if (!mem.startsWith(u8, decl, "__")) try block.variables.put(decl, .{ .Number = undefined }),
+                            .String => for (op.decls) |decl| if (!mem.startsWith(u8, decl, "__")) try block.variables.put(decl, .{ .String = undefined }),
+                            .Bool => for (op.decls) |decl| if (!mem.startsWith(u8, decl, "__")) try block.variables.put(decl, .{ .Bool = undefined }),
 
-                            .Void => for (op.decls) |decl| try block.variables.put(decl, .{ .Void = {} }),
+                            .Void => for (op.decls) |decl| if (!mem.startsWith(u8, decl, "__")) try block.variables.put(decl, .{ .Void = {} }),
 
-                            .Block => for (op.decls) |decl| try block.variables.put(decl, .{ .Block = RuntimeState.Block.init(state.allocator) }),
+                            .Block => for (op.decls) |decl| if (!mem.startsWith(u8, decl, "__")) try block.variables.put(decl, .{ .Block = RuntimeState.Block.init(state.allocator) }),
                         }
                     },
                     .Put => {

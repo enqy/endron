@@ -173,6 +173,7 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
                     switch (tokens[i]) {
                         .Ident => if (mem.startsWith(u8, tokens[i].Ident, "__")) {
                             try block.var_in.put(tokens[i].Ident, operation.*.kind);
+                            try decls.append(tokens[i].Ident);
                         } else if (mem.startsWith(u8, tokens[i].Ident, "_")) {
                             if (block.var_out == null) {
                                 block.var_out = .{ .name = tokens[i].Ident, .kind = operation.*.kind };
@@ -455,7 +456,7 @@ const TypeCheckState = struct {
         kind: Parsed.Variable.Kind,
     };
     const Block = struct {
-        block: Parsed.Block,
+        block: *Parsed.Block,
     };
 
     variables: std.StringHashMap(Variable),
@@ -475,8 +476,17 @@ const TypeCheckState = struct {
     }
 };
 
-fn typeCheckBlock(allocator: *mem.Allocator, block: *Parsed.Block, state_in: ?TypeCheckState) anyerror!TypeCheckState {
+fn typeCheckBlock(allocator: *mem.Allocator, block: *Parsed.Block, state_in: ?*TypeCheckState) anyerror!TypeCheckState {
     var state = TypeCheckState.init(allocator);
+
+    if (state_in) |in| {
+        for (in.variables.items()) |v| {
+            try state.variables.put(v.key, v.value);
+        }
+        for (in.blocks.items()) |v| {
+            try state.blocks.put(v.key, v.value);
+        }
+    }
 
     for (block.operations.items) |opp| {
         switch (opp.kind) {
@@ -501,10 +511,10 @@ fn typeCheckBlock(allocator: *mem.Allocator, block: *Parsed.Block, state_in: ?Ty
                         .Literal => |l| {
                             if (l == .Block) {
                                 if (!state.blocks.contains(out.name)) std.debug.panic("Function {} does not exist!", .{out.name});
-                                state.blocks.getEntry(out.name).?.value.block = l.Block;
+                                state.blocks.getEntry(out.name).?.value.block = &op.input.Literal.Block;
                             } else {
                                 if (!state.variables.contains(out.name)) std.debug.panic("Variable {} does not exist!", .{out.name});
-                                if (@enumToInt(state.variables.get(out.name).?.kind) != @enumToInt(l))
+                                if (state.variables.get(out.name).?.kind != l)
                                     std.debug.panic("Type mismatch between {} and {}!", .{ state.variables.get(out.name).?.kind, l });
                                 out.kind = l;
                             }
@@ -516,7 +526,7 @@ fn typeCheckBlock(allocator: *mem.Allocator, block: *Parsed.Block, state_in: ?Ty
                                 state.blocks.getEntry(out.name).?.value = state.blocks.get(v.name).?;
                             } else {
                                 if (!state.variables.contains(out.name)) std.debug.panic("Variable {} does not exist!", .{out.name});
-                                if (@enumToInt(state.variables.get(out.name).?.kind) != @enumToInt(state.variables.get(v.name).?.kind))
+                                if (state.variables.get(out.name).?.kind != state.variables.get(v.name).?.kind)
                                     std.debug.panic("Type mismatch between {} and {}!", .{ state.variables.get(out.name).?.kind, state.variables.get(v.name).?.kind });
 
                                 op.input.Variable.kind = state.variables.get(v.name).?.kind;
@@ -527,16 +537,28 @@ fn typeCheckBlock(allocator: *mem.Allocator, block: *Parsed.Block, state_in: ?Ty
                             const innerop = @fieldParentPtr(Parsed.Operation.Call, "base", o);
 
                             if (!state.blocks.contains(innerop.func)) std.debug.panic("Function {} does not exist!", .{innerop.func});
+                            var ret = try typeCheckBlock(allocator, state.blocks.get(innerop.func).?.block, &state);
+                            defer ret.deinit();
+
+                            if (state.blocks.get(innerop.func).?.block.var_out) |vout| {
+                                if (!ret.variables.contains(vout.name)) {
+                                    if (!ret.blocks.contains(vout.name)) std.debug.panic("Variable/Function {} does not exist!", .{vout.name});
+                                    const oout = ret.blocks.get(vout.name).?;
+                                    if (!state.blocks.contains(out.name)) std.debug.panic("Function {} does not exist!", .{out.name});
+                                    state.blocks.getEntry(out.name).?.value = oout;
+                                } else {
+                                    const oout = ret.variables.get(vout.name).?;
+                                    if (!state.variables.contains(out.name)) std.debug.panic("Variable {} does not exist!", .{out.name});
+                                    if (state.variables.get(out.name).?.kind != oout.kind)
+                                        std.debug.panic("Type mismatch between {} and {}!", .{ state.variables.get(out.name).?.kind, oout.kind });
+                                }
+                            } else std.debug.panic("Function {} does not return anything!", .{innerop.func});
                         },
                     }
                 }
             },
             else => {},
         }
-    }
-
-    for (state.variables.items()) |entry| {
-        std.debug.print("{}: {}\n", .{ entry.key, entry.value });
     }
 
     return state;
