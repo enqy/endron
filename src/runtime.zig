@@ -96,8 +96,8 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                             .Block => for (op.decls) |decl| try block.variables.put(decl, .{ .Block = RuntimeState.Block.init(state.allocator) }),
                         }
                     },
-                    .Set => {
-                        const op = @fieldParentPtr(pa.Parsed.Operation.Set, "base", ops[i]);
+                    .Put => {
+                        const op = @fieldParentPtr(pa.Parsed.Operation.Put, "base", ops[i]);
 
                         for (op.outputs) |out| {
                             if (!block.variables.contains(out.name)) std.debug.panic("Variable `{}` does not exist", .{out.name});

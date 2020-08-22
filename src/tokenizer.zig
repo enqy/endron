@@ -67,7 +67,7 @@ pub const Token = union(enum) {
     CallSym: void,
     TypeSym: void,
     DeclSym: void,
-    SetSym: void,
+    PutSym: void,
     IfSym: void,
     WhileSym: void,
 
@@ -229,7 +229,7 @@ pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
 
         // Tokenize ~
         if (char == 126) {
-            try tokens.append(Token{ .SetSym = {} });
+            try tokens.append(Token{ .PutSym = {} });
             continue;
         }
 

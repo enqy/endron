@@ -7,7 +7,7 @@ pub const Parsed = struct {
     pub const Operation = struct {
         pub const Kind = enum {
             Decl,
-            Set,
+            Put,
             Call,
             If,
             While,
@@ -28,8 +28,8 @@ pub const Parsed = struct {
             decls: [][]const u8,
         };
 
-        pub const Set = struct {
-            base: Operation = .{ .kind = .Set },
+        pub const Put = struct {
+            base: Operation = .{ .kind = .Put },
 
             input: Input,
             outputs: []Variable,
@@ -40,6 +40,7 @@ pub const Parsed = struct {
 
             func: []const u8,
             inputs: []Input,
+            output: Variable.Kind,
         };
 
         pub const If = struct {
@@ -136,47 +137,9 @@ pub fn parse(allocator: *mem.Allocator, tokens: []const tk.Token) !Parsed {
     var block = try parseBlock(&arena.allocator, tokens, 0, tokens.len);
     var parsed = Parsed.init(arena, block);
 
-    (try typeCheckBlock(allocator, &parsed, &parsed.block)).deinit();
+    (try typeCheckBlock(allocator, &parsed.block, null)).deinit();
 
     return parsed;
-}
-
-fn typeCheckBlock(allocator: *mem.Allocator, parsed: *Parsed, block: *Parsed.Block) !std.StringHashMap(Parsed.Variable.Kind) {
-    var variables = std.StringHashMap(Parsed.Variable.Kind).init(allocator);
-
-    for (block.operations.items) |opp| {
-        switch (opp.kind) {
-            .Decl => {
-                const op = @fieldParentPtr(Parsed.Operation.Decl, "base", opp);
-                for (op.decls) |decl| try variables.put(decl, op.kind);
-            },
-            .Set => {
-                const op = @fieldParentPtr(Parsed.Operation.Set, "base", opp);
-                for (op.outputs) |out| {
-                    if (!variables.contains(out.name)) std.debug.panic("Variable {} does not exist!", .{out.name});
-                    switch (op.input) {
-                        .Literal => |l| {
-                            if (@enumToInt(variables.get(out.name).?) != @enumToInt(l))
-                                std.debug.panic("Type mismatch between {} and {}!", .{ variables.get(out.name).?, l });
-                        },
-                        .Variable => |v| {
-                            if (!variables.contains(v.name)) std.debug.panic("Variable {} does not exist!", .{v.name});
-                            if (@enumToInt(variables.get(out.name).?) != @enumToInt(variables.get(v.name).?))
-                                std.debug.panic("Type mismatch between {} and {}!", .{ variables.get(out.name).?, variables.get(v.name).? });
-                        },
-                        .Operation => {},
-                    }
-                }
-            },
-            else => {},
-        }
-    }
-
-    for (variables.items()) |entry| {
-        std.debug.print("{}: {}\n", .{ entry.key, entry.value });
-    }
-
-    return variables;
 }
 
 fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: usize, blockEnd: usize) anyerror!Parsed.Block {
@@ -234,14 +197,14 @@ fn parseBlock(allocator: *mem.Allocator, tokens: []const tk.Token, blockStart: u
                 }
                 try block.operations.append(&operation.base);
             },
-            .SetSym => {
+            .PutSym => {
                 i += 1;
 
                 if (tokens[i] != .LParen) std.debug.panic("Expected LParen `(` token, found {} at index {}", .{ tokens[i], i });
                 i += 1;
 
-                const operation = try allocator.create(Parsed.Operation.Set);
-                operation.*.base = .{ .kind = .Set };
+                const operation = try allocator.create(Parsed.Operation.Put);
+                operation.*.base = .{ .kind = .Put };
 
                 switch (tokens[i]) {
                     .Ident => operation.*.input = .{ .Variable = .{ .name = tokens[i].Ident, .kind = null } },
@@ -485,4 +448,96 @@ fn parseOpCall(allocator: *mem.Allocator, tokens: []const tk.Token, i: *usize) a
     operation.*.inputs = inputs.toOwnedSlice();
 
     return &operation.base;
+}
+
+const TypeCheckState = struct {
+    const Variable = struct {
+        kind: Parsed.Variable.Kind,
+    };
+    const Block = struct {
+        block: Parsed.Block,
+    };
+
+    variables: std.StringHashMap(Variable),
+    blocks: std.StringHashMap(Block),
+
+    fn init(allocator: *mem.Allocator) TypeCheckState {
+        return TypeCheckState{
+            .variables = std.StringHashMap(Variable).init(allocator),
+            .blocks = std.StringHashMap(Block).init(allocator),
+        };
+    }
+
+    fn deinit(self: *TypeCheckState) void {
+        self.blocks.deinit();
+        self.variables.deinit();
+        self.* = undefined;
+    }
+};
+
+fn typeCheckBlock(allocator: *mem.Allocator, block: *Parsed.Block, state_in: ?TypeCheckState) anyerror!TypeCheckState {
+    var state = TypeCheckState.init(allocator);
+
+    for (block.operations.items) |opp| {
+        switch (opp.kind) {
+            .Decl => {
+                const op = @fieldParentPtr(Parsed.Operation.Decl, "base", opp);
+                for (op.decls) |decl| {
+                    if (op.kind == .Block) {
+                        const entry = try state.blocks.getOrPut(decl);
+                        if (entry.found_existing) std.debug.panic("Function {} already exists!", .{decl});
+                        entry.entry.*.value = .{ .block = undefined };
+                    } else {
+                        const entry = try state.variables.getOrPut(decl);
+                        if (entry.found_existing) std.debug.panic("Variable {} already exists!", .{decl});
+                        entry.entry.*.value = .{ .kind = op.kind };
+                    }
+                }
+            },
+            .Put => {
+                const op = @fieldParentPtr(Parsed.Operation.Put, "base", opp);
+                for (op.outputs) |*out| {
+                    switch (op.input) {
+                        .Literal => |l| {
+                            if (l == .Block) {
+                                if (!state.blocks.contains(out.name)) std.debug.panic("Function {} does not exist!", .{out.name});
+                                state.blocks.getEntry(out.name).?.value.block = l.Block;
+                            } else {
+                                if (!state.variables.contains(out.name)) std.debug.panic("Variable {} does not exist!", .{out.name});
+                                if (@enumToInt(state.variables.get(out.name).?.kind) != @enumToInt(l))
+                                    std.debug.panic("Type mismatch between {} and {}!", .{ state.variables.get(out.name).?.kind, l });
+                                out.kind = l;
+                            }
+                        },
+                        .Variable => |v| {
+                            if (!state.variables.contains(v.name)) {
+                                if (!state.blocks.contains(v.name)) std.debug.panic("Variable/Function {} does not exist!", .{v.name});
+                                if (!state.blocks.contains(out.name)) std.debug.panic("Function {} does not exist!", .{out.name});
+                                state.blocks.getEntry(out.name).?.value = state.blocks.get(v.name).?;
+                            } else {
+                                if (!state.variables.contains(out.name)) std.debug.panic("Variable {} does not exist!", .{out.name});
+                                if (@enumToInt(state.variables.get(out.name).?.kind) != @enumToInt(state.variables.get(v.name).?.kind))
+                                    std.debug.panic("Type mismatch between {} and {}!", .{ state.variables.get(out.name).?.kind, state.variables.get(v.name).?.kind });
+
+                                op.input.Variable.kind = state.variables.get(v.name).?.kind;
+                                out.kind = state.variables.get(v.name).?.kind;
+                            }
+                        },
+                        .Operation => |o| {
+                            const innerop = @fieldParentPtr(Parsed.Operation.Call, "base", o);
+
+                            if (!state.blocks.contains(innerop.func)) std.debug.panic("Function {} does not exist!", .{innerop.func});
+                        },
+                    }
+                }
+            },
+            else => {},
+        }
+    }
+
+    for (state.variables.items()) |entry| {
+        std.debug.print("{}: {}\n", .{ entry.key, entry.value });
+    }
+
+    return state;
 }
