@@ -173,7 +173,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                 .Literal => |il| {
                     switch (rhs) {
                         .Literal => |cl| {
-                            if (@enumToInt(il) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ il, cl });
+                            if (@enumToInt(il) != @enumToInt(cl)) std.debug.panic("If types, {} and {} are not equal!", .{ il, cl });
                             switch (il) {
                                 .Integer => return (il.Integer == cl.Integer),
                                 .Number => return (il.Number == cl.Number),
@@ -185,7 +185,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         },
                         .Variable => |cv| {
                             if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
-                            if (@enumToInt(il) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ il, block.variables.get(cv.name).? });
+                            if (@enumToInt(il) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types, {} and {} are not equal!", .{ il, block.variables.get(cv.name).? });
                             const cd = block.variables.get(cv.name).?;
                             switch (il) {
                                 .Integer => return (il.Integer == cd.Integer),
@@ -198,7 +198,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         },
                         .Operation => |co| {
                             const cd = (try runOpCall(state, block, co)) orelse std.debug.panic("Function does not return anything!", .{});
-                            if (@enumToInt(il) != @enumToInt(cd)) std.debug.panic("If types {} and {} are not equal!", .{ il, cd });
+                            if (@enumToInt(il) != @enumToInt(cd)) std.debug.panic("If types, {} and {} are not equal!", .{ il, cd });
                             switch (il) {
                                 .Integer => return (il.Integer == cd.Integer),
                                 .Number => return (il.Number == cd.Number),
@@ -214,7 +214,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                     switch (rhs) {
                         .Literal => |cl| {
                             if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
-                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, cl });
+                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cl)) std.debug.panic("If types, {} and {} are not equal!", .{ block.variables.get(iv.name).?, cl });
                             const id = block.variables.get(iv.name).?;
                             switch (id) {
                                 .Integer => return (id.Integer == cl.Integer),
@@ -228,7 +228,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         .Variable => |cv| {
                             if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
                             if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
-                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, block.variables.get(cv.name).? });
+                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types, {} and {} are not equal!", .{ block.variables.get(iv.name).?, block.variables.get(cv.name).? });
                             const id = block.variables.get(iv.name).?;
                             const cd = block.variables.get(cv.name).?;
                             switch (id) {
@@ -243,7 +243,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         .Operation => |co| {
                             if (!block.variables.contains(iv.name)) std.debug.panic("Variable `{}` does not exist", .{iv.name});
                             const cd = (try runOpCall(state, block, co)) orelse std.debug.panic("Function does not return anything!", .{});
-                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cd)) std.debug.panic("If types {} and {} are not equal!", .{ block.variables.get(iv.name).?, cd });
+                            if (@enumToInt(block.variables.get(iv.name).?) != @enumToInt(cd)) std.debug.panic("If types, {} and {} are not equal!", .{ block.variables.get(iv.name).?, cd });
                             const id = block.variables.get(iv.name).?;
                             switch (id) {
                                 .Integer => return (id.Integer == cd.Integer),
@@ -260,7 +260,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                     switch (rhs) {
                         .Literal => |cl| {
                             const id = (try runOpCall(state, block, io)) orelse std.debug.panic("Function does not return anything!", .{});
-                            if (@enumToInt(id) != @enumToInt(cl)) std.debug.panic("If types {} and {} are not equal!", .{ id, cl });
+                            if (@enumToInt(id) != @enumToInt(cl)) std.debug.panic("If types, {} and {} are not equal!", .{ id, cl });
                             switch (id) {
                                 .Integer => return (id.Integer == cl.Integer),
                                 .Number => return (id.Number == cl.Number),
@@ -273,7 +273,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         .Variable => |cv| {
                             const id = (try runOpCall(state, block, io)) orelse std.debug.panic("Function does not return anything!", .{});
                             if (!block.variables.contains(cv.name)) std.debug.panic("Variable `{}` does not exist", .{cv.name});
-                            if (@enumToInt(id) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types {} and {} are not equal!", .{ id, block.variables.get(cv.name).? });
+                            if (@enumToInt(id) != @enumToInt(block.variables.get(cv.name).?)) std.debug.panic("If types, {} and {} are not equal!", .{ id, block.variables.get(cv.name).? });
                             const cd = block.variables.get(cv.name).?;
                             switch (id) {
                                 .Integer => return (id.Integer == cd.Integer),
@@ -287,7 +287,7 @@ pub fn RuntimeBase(comptime Builtins: type) type {
                         .Operation => |co| {
                             const id = (try runOpCall(state, block, io)) orelse std.debug.panic("Function does not return anything!", .{});
                             const cd = (try runOpCall(state, block, co)) orelse std.debug.panic("Function does not return anything!", .{});
-                            if (@enumToInt(id) != @enumToInt(cd)) std.debug.panic("If types {} and {} are not equal!", .{ id, cd });
+                            if (@enumToInt(id) != @enumToInt(cd)) std.debug.panic("If types, {} and {} are not equal!", .{ id, cd });
                             switch (id) {
                                 .Integer => return (id.Integer == cd.Integer),
                                 .Number => return (id.Number == cd.Number),
