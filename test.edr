@@ -1,9 +1,13 @@
 @($block, test)
 ~({
-    @($int, __x)
     @($int, _out)
+    @($int, __x)
+    
     ~(__x, _out)
 }, test)
 
 @($int, x)
-~(!(test, 2), x)
+^(true, true, {
+    ~(!(add, !(test, 2), x), x)
+    !(print, x, "\\n")
+})
