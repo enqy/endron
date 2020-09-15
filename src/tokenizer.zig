@@ -1,306 +1,387 @@
 const std = @import("std");
-const mem = std.mem;
+const Allocator = std.mem.Allocator;
 
-const CleanupState = enum {
-    String,
-    None,
+pub const Token = struct {
+    kind: Kind,
+    start: usize,
+    end: usize,
+
+    pub const Kind = enum {
+        Eof,
+        Ident,
+        LiteralString,
+        LiteralInteger,
+        LiteralFloat,
+        LineComment,
+        DocComment,
+
+        LParen,
+        RParen,
+        LBrace,
+        RBrace,
+        LBracket,
+        RBracket,
+        LAngle,
+        RAngle,
+
+        Colon,
+        Comma,
+        Period,
+        Pipe,
+
+        Asterisk,
+        Ampersand,
+        Underscore,
+
+        Dollar,
+        Bang,
+        Tilde,
+
+        Equal,
+        EqualPlus,
+        EqualDash,
+        EqualSlash,
+        EqualAsterisk,
+
+        LAngleLAngle,
+
+        Keyword_comptime,
+        Keyword_const,
+        Keyword_global,
+        Keyword_pub,
+        Keyword_type,
+        Keyword_fn,
+        Keyword_struct,
+    };
+
+    pub const Keywords = std.ComptimeStringMap(Kind, .{
+        .{ "comptime", .Keyword_comptime },
+        .{ "global", .Keyword_global },
+        .{ "const", .Keyword_const },
+        .{ "pub", .Keyword_pub },
+        .{ "type", .Keyword_type },
+        .{ "fn", .Keyword_fn },
+        .{ "struct", .Keyword_struct },
+
+        .{ "_", .Underscore },
+    });
 };
 
-fn cleanup(allocator: *mem.Allocator, code: []const u8) ![]const u8 {
-    var cleaned = std.ArrayList(u8).init(allocator);
-    defer cleaned.deinit();
-
-    var state: CleanupState = .None;
-
-    var skip: usize = 0;
-
-    for (code) |char, i| {
-        if (skip > 0) {
-            skip -= 1;
-            continue;
+pub fn tokenize(allocator: *Allocator, source: []const u8) ![]const Token {
+    const estimated = source.len / 4;
+    var tokenizer = Tokenizer{
+        .tokens = try std.ArrayList(Token).initCapacity(allocator, estimated),
+        .source = source,
+    };
+    errdefer tokenizer.tokens.deinit();
+    while (true) {
+        const tok = try tokenizer.tokens.addOne();
+        tok.* = tokenizer.next();
+        if (tok.kind == .Eof) {
+            return tokenizer.tokens.toOwnedSlice();
         }
-
-        if (char == 59) {
-            while (i + skip < code.len and code[i + skip] != 10) {
-                skip += 1;
-            }
-            continue;
-        }
-
-        if (state == .String) {
-            if (char == 34) {
-                state = .None;
-                try cleaned.append(char);
-                continue;
-            } else if (char == 92) {
-                try cleaned.append(char);
-                try cleaned.append(code[i + 1]);
-                skip += 1;
-                continue;
-            }
-        } else {
-            if (char == 34) {
-                state = .String;
-                try cleaned.append(char);
-                continue;
-            }
-        }
-
-        if (state != .String and char == 9) continue;
-        if (state != .String and char == 10) continue;
-        if (state != .String and char == 13) continue;
-        if (state != .String and char == 32) continue;
-        try cleaned.append(char);
     }
-
-    return cleaned.toOwnedSlice();
 }
 
-pub const Token = union(enum) {
-    String: []const u8,
-    Integer: struct { string: []const u8, num: i64 },
-    Number: struct { string: []const u8, num: f64 },
-    Bool: bool,
-    Void: void,
-    Ident: []const u8,
+pub const Tokenizer = struct {
+    tokens: std.ArrayList(Token),
+    source: []const u8,
+    index: usize = 0,
 
-    CallSym: void,
-    TypeSym: void,
-    DeclSym: void,
-    PutSym: void,
-    IfSym: void,
-    WhileSym: void,
+    const State = enum {
+        Start,
 
-    Colon: void,
-    Comma: void,
+        LiteralString,
+        LiteralInteger,
+        LiteralFloat,
 
-    LParen: void,
-    RParen: void,
-    LBrace: void,
-    RBrace: void,
-    LBracket: void,
-    RBracket: void,
+        Ident,
+        Zero,
+        Number,
 
-    None: void,
+        Slash,
+        LineComment,
+        DocComment,
 
-    pub fn deinit(self: Token, allocator: *mem.Allocator) void {
-        switch (self) {
-            .String => allocator.free(self.String),
-            .Integer => allocator.free(self.Integer.string),
-            .Number => allocator.free(self.Number.string),
-            .Ident => allocator.free(self.Ident),
-            else => {},
+        Equal,
+        LAngle,
+    };
+
+    fn isIdentChar(c: u8) bool {
+        return std.ascii.isAlNum(c) or c == '_';
+    }
+
+    pub fn next(self: *Tokenizer) Token {
+        var state: State = .Start;
+        var res = Token{
+            .kind = .Eof,
+            .start = self.index,
+            .end = 0,
+        };
+
+        while (self.index < self.source.len) : (self.index += 1) {
+            const c = self.source[self.index];
+            switch (state) {
+                .Start => switch (c) {
+                    ' ', '\n', '\t', '\r' => res.start = self.index + 1,
+                    '"' => {
+                        state = .LiteralString;
+                        res.kind = .LiteralString;
+                    },
+                    'a'...'z', 'A'...'Z', '_' => {
+                        state = .Ident;
+                        res.kind = .Ident;
+                    },
+                    '0' => {
+                        state = .Zero;
+                    },
+                    '1'...'9' => {
+                        state = .Number;
+                    },
+                    '=' => {
+                        state = .Equal;
+                    },
+                    '<' => {
+                        state = .LAngle;
+                    },
+                    '/' => {
+                        state = .Slash;
+                    },
+                    '$' => {
+                        res.kind = .Dollar;
+                        self.index += 1;
+                        break;
+                    },
+                    '~' => {
+                        res.kind = .Tilde;
+                        self.index += 1;
+                        break;
+                    },
+                    '!' => {
+                        res.kind = .Bang;
+                        self.index += 1;
+                        break;
+                    },
+                    ':' => {
+                        res.kind = .Colon;
+                        self.index += 1;
+                        break;
+                    },
+                    '(' => {
+                        res.kind = .LParen;
+                        self.index += 1;
+                        break;
+                    },
+                    ')' => {
+                        res.kind = .RParen;
+                        self.index += 1;
+                        break;
+                    },
+                    '{' => {
+                        res.kind = .LBrace;
+                        self.index += 1;
+                        break;
+                    },
+                    '}' => {
+                        res.kind = .RBrace;
+                        self.index += 1;
+                        break;
+                    },
+                    '[' => {
+                        res.kind = .LBracket;
+                        self.index += 1;
+                        break;
+                    },
+                    ']' => {
+                        res.kind = .RBracket;
+                        self.index += 1;
+                        break;
+                    },
+                    '>' => {
+                        res.kind = .RAngle;
+                        self.index += 1;
+                        break;
+                    },
+                    ',' => {
+                        res.kind = .Comma;
+                        self.index += 1;
+                        break;
+                    },
+                    '.' => {
+                        res.kind = .Period;
+                        self.index += 1;
+                        break;
+                    },
+                    '|' => {
+                        res.kind = .Pipe;
+                        self.index += 1;
+                        break;
+                    },
+                    '*' => {
+                        res.kind = .Asterisk;
+                        self.index += 1;
+                        break;
+                    },
+                    '&' => {
+                        res.kind = .Ampersand;
+                        self.index += 1;
+                        break;
+                    },
+                    else => std.debug.panic("invalid character {c}", .{@truncate(u8, c)}),
+                },
+                .Ident => switch (c) {
+                    'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
+                    else => {
+                        if (Token.Keywords.get(self.source[res.start..self.index])) |kind| {
+                            res.kind = kind;
+                        }
+                        break;
+                    },
+                },
+                // TODO: support floats
+                .Zero => switch (c) {
+                    else => {
+                        res.kind = .LiteralInteger;
+                        break;
+                    },
+                },
+                // TODO: support floats
+                .Number => switch (c) {
+                    '0'...'9' => {},
+                    else => {
+                        res.kind = .LiteralInteger;
+                        break;
+                    },
+                },
+                .Equal => switch (c) {
+                    '+' => {
+                        res.kind = .EqualPlus;
+                        self.index += 1;
+                        break;
+                    },
+                    '-' => {
+                        res.kind = .EqualDash;
+                        self.index += 1;
+                        break;
+                    },
+                    '*' => {
+                        res.kind = .EqualAsterisk;
+                        self.index += 1;
+                        break;
+                    },
+                    '/' => {
+                        res.kind = .EqualSlash;
+                        self.index += 1;
+                        break;
+                    },
+                    else => std.debug.panic("invalid operation {c} following =", .{@truncate(u8, c)}),
+                },
+                .LAngle => switch (c) {
+                    '<' => {
+                        res.kind = .LAngleLAngle;
+                        self.index += 1;
+                        break;
+                    },
+                    else => {
+                        res.kind = .LAngle;
+                        self.index += 1;
+                        break;
+                    },
+                },
+                .Slash => switch (c) {
+                    '/' => state = .LineComment,
+                    else => std.debug.panic("unexpected single slash", .{}),
+                },
+                // TODO: implment more checking
+                .LineComment => switch (c) {
+                    '/' => state = .DocComment,
+                    '\n' => {
+                        res.kind = .LineComment;
+                        self.index += 1;
+                        break;
+                    },
+                    else => {},
+                },
+                // TODO: implment more checking
+                .DocComment => switch (c) {
+                    '/' => state = .LineComment,
+                    '\n' => {
+                        res.kind = .DocComment;
+                        self.index += 1;
+                        break;
+                    },
+                    else => {},
+                },
+                // TODO: implment more checking
+                .LiteralString => switch (c) {
+                    '"' => {
+                        res.kind = .LiteralString;
+                        self.index += 1;
+                        break;
+                    },
+                    else => {},
+                },
+                else => std.debug.panic("not implemented {}", .{state}),
+            }
+        } else {
+            switch (state) {
+                .Start => {},
+                .Ident => {
+                    res.kind = Token.Keywords.get(self.source[res.start..]) orelse .Ident;
+                },
+                .LineComment => res.kind = .LineComment,
+                .DocComment => res.kind = .DocComment,
+                .LiteralString => std.debug.panic("untermiated string", .{}),
+                .Zero => res.kind = .LiteralInteger,
+                .Number => res.kind = .LiteralInteger,
+                else => std.debug.panic("unexpected EOF", .{}),
+            }
         }
+
+        res.end = self.index;
+        return res;
     }
 };
 
-pub fn tokenize(allocator: *mem.Allocator, code: []const u8) ![]const Token {
-    var cleaned = try cleanup(allocator, code);
-    defer allocator.free(cleaned);
+fn expectTokens(source: []const u8, tokens: []const Token.Kind) void {
+    var tokenizer = Tokenizer{
+        .tokens = undefined,
+        .source = source,
+    };
+    for (tokens) |t| std.testing.expectEqual(t, tokenizer.next().kind);
+    std.testing.expect(tokenizer.next().kind == .Eof);
+}
 
-    var tokens = std.ArrayList(Token).init(allocator);
-    defer tokens.deinit();
-
-    var curr_token: Token = .{ .None = {} };
-
-    var skip: usize = 0;
-
-    for (cleaned) |char, i| {
-        if (skip > 0) {
-            skip -= 1;
-            continue;
-        }
-
-        // Tokenize Ident
-        if ((char >= 65 and char <= 90) or (char >= 97 and char <= 122) or char == 95) {
-            if (curr_token == .None) {
-                curr_token = .{ .Ident = try mem.join(allocator, "", &[_][]const u8{ "", &[_]u8{char} }) };
-                continue;
-            } else if (curr_token == .Ident) {
-                const tmp = try mem.join(allocator, "", &[_][]const u8{ curr_token.Ident, &[_]u8{char} });
-                allocator.free(curr_token.Ident);
-                curr_token.Ident = tmp;
-                continue;
-            }
-        } else if (curr_token == .Ident) {
-            if (mem.eql(u8, curr_token.Ident, "false")) {
-                allocator.free(curr_token.Ident);
-                try tokens.append(.{ .Bool = false });
-            } else if (mem.eql(u8, curr_token.Ident, "true")) {
-                allocator.free(curr_token.Ident);
-                try tokens.append(.{ .Bool = true });
-            } else if (mem.eql(u8, curr_token.Ident, "void")) {
-                allocator.free(curr_token.Ident);
-                try tokens.append(.{ .Void = {} });
-            } else {
-                try tokens.append(curr_token);
-            }
-            curr_token = .{ .None = {} };
-        }
-
-        // Tokenize String
-        if (char == 34) {
-            if (curr_token == .None) {
-                curr_token = .{ .String = try mem.join(allocator, "", &[_][]const u8{""}) };
-                continue;
-            } else if (curr_token == .String) {
-                try tokens.append(curr_token);
-                curr_token = .{ .None = {} };
-                continue;
-            }
-        }
-        if ((char >= 35 and char <= 126) or char == 32 or char == 33 or char == 10 or char == 9) {
-            if (curr_token == .String) {
-                if (char == 92) {
-                    skip += 1;
-                    const tmp = try mem.join(allocator, "", &[_][]const u8{ curr_token.String, &[_]u8{cleaned[i + 1]} });
-                    allocator.free(curr_token.String);
-                    curr_token.String = tmp;
-                    continue;
-                } else {
-                    const tmp = try mem.join(allocator, "", &[_][]const u8{ curr_token.String, &[_]u8{char} });
-                    allocator.free(curr_token.String);
-                    curr_token.String = tmp;
-                    continue;
-                }
-            }
-        }
-
-        // Tokenize Number & Integer
-        if ((char >= 48 and char <= 57) or char == 45 or char == 46) {
-            if (char == 46) {
-                if (curr_token == .None) {
-                    curr_token = .{ .Number = .{ .string = try mem.join(allocator, "", &[_][]const u8{ "", &[_]u8{char} }), .num = 0 } };
-                    continue;
-                } else if (curr_token == .Number) {
-                    const tmp = try mem.join(allocator, "", &[_][]const u8{ curr_token.Number.string, &[_]u8{char} });
-                    allocator.free(curr_token.Number.string);
-                    curr_token.Number.string = tmp;
-                    continue;
-                } else if (curr_token == .Integer) {
-                    const tmp = try mem.join(allocator, "", &[_][]const u8{ curr_token.Integer.string, &[_]u8{char} });
-                    allocator.free(curr_token.Integer.string);
-                    curr_token = .{ .Number = .{ .string = tmp, .num = 0 } };
-                    continue;
-                }
-            } else {
-                if (curr_token == .None) {
-                    curr_token = .{ .Integer = .{ .string = try mem.join(allocator, "", &[_][]const u8{ "", &[_]u8{char} }), .num = 0 } };
-                    continue;
-                } else if (curr_token == .Number) {
-                    const tmp = try mem.join(allocator, "", &[_][]const u8{ curr_token.Number.string, &[_]u8{char} });
-                    allocator.free(curr_token.Number.string);
-                    curr_token.Number.string = tmp;
-                    continue;
-                } else if (curr_token == .Integer) {
-                    const tmp = try mem.join(allocator, "", &[_][]const u8{ curr_token.Integer.string, &[_]u8{char} });
-                    allocator.free(curr_token.Integer.string);
-                    curr_token.Integer.string = tmp;
-                    continue;
-                }
-            }
-        } else if (curr_token == .Number) {
-            curr_token.Number.num = try std.fmt.parseFloat(f64, curr_token.Number.string);
-            try tokens.append(curr_token);
-            curr_token = .{ .None = {} };
-        } else if (curr_token == .Integer) {
-            curr_token.Integer.num = try std.fmt.parseInt(i64, curr_token.Integer.string, 10);
-            try tokens.append(curr_token);
-            curr_token = .{ .None = {} };
-        }
-
-        // Tokenize !
-        if (char == 33) {
-            try tokens.append(Token{ .CallSym = {} });
-            continue;
-        }
-
-        // Tokenize @
-        if (char == 64) {
-            try tokens.append(Token{ .DeclSym = {} });
-            continue;
-        }
-
-        // Tokenize $
-        if (char == 36) {
-            try tokens.append(Token{ .TypeSym = {} });
-            continue;
-        }
-
-        // Tokenize ~
-        if (char == 126) {
-            try tokens.append(Token{ .PutSym = {} });
-            continue;
-        }
-
-        // Tokenize ?
-        if (char == 63) {
-            try tokens.append(Token{ .IfSym = {} });
-            continue;
-        }
-
-        // Tokenize ^
-        if (char == 94) {
-            try tokens.append(Token{ .WhileSym = {} });
-            continue;
-        }
-
-        // Tokenize :
-        if (char == 58) {
-            try tokens.append(Token{ .Colon = {} });
-            continue;
-        }
-
-        // Tokenize ,
-        if (char == 44) {
-            try tokens.append(Token{ .Comma = {} });
-            continue;
-        }
-
-        // Tokenize ~
-        if (char == 126) {
-            try tokens.append(Token{ .Comma = {} });
-            continue;
-        }
-
-        // Tokenize (
-        if (char == 40) {
-            try tokens.append(Token{ .LParen = {} });
-            continue;
-        }
-
-        // Tokenize )
-        if (char == 41) {
-            try tokens.append(Token{ .RParen = {} });
-            continue;
-        }
-
-        // Tokenize {
-        if (char == 123) {
-            try tokens.append(Token{ .LBrace = {} });
-            continue;
-        }
-
-        // Tokenize }
-        if (char == 125) {
-            try tokens.append(Token{ .RBrace = {} });
-            continue;
-        }
-
-        // Tokenize [
-        if (char == 91) {
-            try tokens.append(Token{ .LBracket = {} });
-            continue;
-        }
-
-        // Tokenize ]
-        if (char == 93) {
-            try tokens.append(Token{ .RBracket = {} });
-            continue;
-        }
-
-        std.debug.panic("Invalid Token: {c},{}, {}, {}\n", .{ char, char, i, curr_token });
-    }
-
-    return tokens.toOwnedSlice();
+test "tokenizer" {
+    expectTokens(
+        \\! ~ $
+        \\& *
+        \\=+ =- =* =/
+        \\( ) { } < > [ ]
+        \\<<
+        \\, . | :
+    , &[_]Token.Kind{
+        .Bang,
+        .Tilde,
+        .Dollar,
+        .Ampersand,
+        .Asterisk,
+        .EqualPlus,
+        .EqualDash,
+        .EqualAsterisk,
+        .EqualSlash,
+        .LParen,
+        .RParen,
+        .LBrace,
+        .RBrace,
+        .LAngle,
+        .RAngle,
+        .LBracket,
+        .RBracket,
+        .LAngleLAngle,
+        .Comma,
+        .Period,
+        .Pipe,
+        .Colon,
+    });
 }

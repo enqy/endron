@@ -1,13 +1,22 @@
-@($block, test)
-~({
-    @($int, _out)
-    @($int, __x)
-    
-    ~(__x, _out)
-}, test)
+$x: global const u32 << 9
+$y: global const u32 << 2
 
-@($int, x)
-^(true, true, {
-    ~(!(add, !(test, 2), x), x)
-    !(print, x, "\\n")
-})
+$z: global const << =+: (x, y)
+
+// This is just a test comment
+/// This is just a test doc comment
+$AddData << struct($T: comptime type){
+    $x: T
+    $y: T
+
+    $add: const pub << fn<u32>($self: *AddData) {
+        =+: (self.x, self.y)
+    }
+}
+
+$w: (AddData(u32)) << .{
+    ~x: 2
+    ~y: 3
+}
+
+!print: ("{}\n", .{!w.add:_})
