@@ -2,9 +2,7 @@ const std = @import("std");
 const process = std.process;
 const mem = std.mem;
 
-const tk = @import("tokenizer.zig");
-const pa = @import("parser.zig");
-const rt = @import("runtime.zig");
+const pa = @import("parser2.zig");
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -19,17 +17,11 @@ pub fn main() anyerror!void {
 
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
-    const code = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(code);
+    const source = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(source);
 
-    const tokens = try tk.tokenize(allocator, code);
-    defer {
-        for (tokens) |t| t.deinit(allocator);
-        allocator.free(tokens);
-    }
+    var tree = try pa.parse(allocator, source);
+    defer tree.deinit();
 
-    var parsed = try pa.parse(allocator, tokens);
-    defer parsed.deinit();
-
-    try rt.SimpleRuntime.run(&parsed);
+    for (tree.nodes) |node| try node.render(std.io.getStdOut().writer(), 0);
 }
