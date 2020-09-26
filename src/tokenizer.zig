@@ -36,32 +36,32 @@ pub const Token = struct {
         Dollar,
         Bang,
         Tilde,
+        At,
 
         Equal,
-        EqualPlus,
-        EqualDash,
-        EqualSlash,
-        EqualAsterisk,
 
-        LAngleLAngle,
+        HashPlus,
+        HashMinus,
+        HashAsterisk,
+        HashSlash,
 
         Keyword_comptime,
-        Keyword_const,
-        Keyword_global,
+        Keyword_mut,
         Keyword_pub,
         Keyword_type,
         Keyword_fn,
         Keyword_struct,
+        Keyword_void,
     };
 
     pub const Keywords = std.ComptimeStringMap(Kind, .{
         .{ "comptime", .Keyword_comptime },
-        .{ "global", .Keyword_global },
-        .{ "const", .Keyword_const },
+        .{ "mut", .Keyword_mut },
         .{ "pub", .Keyword_pub },
         .{ "type", .Keyword_type },
         .{ "fn", .Keyword_fn },
         .{ "struct", .Keyword_struct },
+        .{ "void", .Keyword_void },
 
         .{ "_", .Underscore },
     });
@@ -104,7 +104,8 @@ pub const Tokenizer = struct {
         DocComment,
 
         Equal,
-        LAngle,
+
+        Hash,
     };
 
     fn isIdentChar(c: u8) bool {
@@ -141,11 +142,11 @@ pub const Tokenizer = struct {
                     '=' => {
                         state = .Equal;
                     },
-                    '<' => {
-                        state = .LAngle;
-                    },
                     '/' => {
                         state = .Slash;
+                    },
+                    '#' => {
+                        state = .Hash;
                     },
                     '$' => {
                         res.kind = .Dollar;
@@ -159,6 +160,11 @@ pub const Tokenizer = struct {
                     },
                     '!' => {
                         res.kind = .Bang;
+                        self.index += 1;
+                        break;
+                    },
+                    '@' => {
+                        res.kind = .At;
                         self.index += 1;
                         break;
                     },
@@ -194,6 +200,11 @@ pub const Tokenizer = struct {
                     },
                     ']' => {
                         res.kind = .RBracket;
+                        self.index += 1;
+                        break;
+                    },
+                    '<' => {
+                        res.kind = .LAngle;
                         self.index += 1;
                         break;
                     },
@@ -254,37 +265,8 @@ pub const Tokenizer = struct {
                     },
                 },
                 .Equal => switch (c) {
-                    '+' => {
-                        res.kind = .EqualPlus;
-                        self.index += 1;
-                        break;
-                    },
-                    '-' => {
-                        res.kind = .EqualDash;
-                        self.index += 1;
-                        break;
-                    },
-                    '*' => {
-                        res.kind = .EqualAsterisk;
-                        self.index += 1;
-                        break;
-                    },
-                    '/' => {
-                        res.kind = .EqualSlash;
-                        self.index += 1;
-                        break;
-                    },
-                    else => std.debug.panic("invalid operation {c} following =", .{@truncate(u8, c)}),
-                },
-                .LAngle => switch (c) {
-                    '<' => {
-                        res.kind = .LAngleLAngle;
-                        self.index += 1;
-                        break;
-                    },
                     else => {
-                        res.kind = .LAngle;
-                        self.index += 1;
+                        res.kind = .Equal;
                         break;
                     },
                 },
@@ -292,6 +274,30 @@ pub const Tokenizer = struct {
                     '/' => state = .LineComment,
                     else => std.debug.panic("unexpected single slash", .{}),
                 },
+                .Hash => switch (c) {
+                    '+' => {
+                        res.kind = .HashPlus;
+                        self.index += 1;
+                        break;
+                    },
+                    '-' => {
+                        res.kind = .HashMinus;
+                        self.index += 1;
+                        break;
+                    },
+                    '*' => {
+                        res.kind = .HashAsterisk;
+                        self.index += 1;
+                        break;
+                    },
+                    '/' => {
+                        res.kind = .HashSlash;
+                        self.index += 1;
+                        break;
+                    },
+                    else => std.debug.panic("unexpected math operator {c}", .{@truncate(u8, c)}),
+                },
+
                 // TODO: implment more checking
                 .LineComment => switch (c) {
                     '/' => state = .DocComment,
