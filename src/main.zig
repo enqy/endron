@@ -2,7 +2,7 @@ const std = @import("std");
 const process = std.process;
 const mem = std.mem;
 
-const pa = @import("parser2.zig");
+const pa = @import("parser.zig");
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -12,7 +12,7 @@ pub fn main() anyerror!void {
     var arg_it = process.args();
 
     _ = arg_it.skip();
-    const filename = try (arg_it.next(allocator).?);
+    const filename = try (arg_it.next(allocator) orelse @panic("invalid filename"));
     defer allocator.free(filename);
 
     const file = try std.fs.cwd().openFile(filename, .{});
@@ -23,5 +23,5 @@ pub fn main() anyerror!void {
     var tree = try pa.parse(allocator, source);
     defer tree.deinit();
 
-    for (tree.nodes) |node| try node.render(std.io.getStdOut().writer(), 0);
+    try tree.root.render(std.io.getStdOut().writer(), 0, source, tree.tokens);
 }

@@ -1,22 +1,26 @@
-$x: global const u32 << 9
-$y: global const u32 << 2
+$x: u32 = 9
+$y: u32 = 2
 
-$z: global const << =+: (x, y)
+$z = 1
 
 // This is just a test comment
 /// This is just a test doc comment
-$AddData << struct($T: comptime type){
-    $x: T
-    $y: T
+$AddData: @struct: <T:(comptime, type)> = {
+    $.x: T
+    $.y: T
 
-    $add: const pub << fn<u32>($self: *AddData) {
-        =+: (self.x, self.y)
+    $add: (pub, @fn: (<self:AddData>, T)) = {
+        $ix = self.x
+
+        ~ix
     }
 }
 
-$w: (AddData(u32)) << .{
-    ~x: 2
-    ~y: 3
+$w: !AddData: (u32) = {
+    $.x = 2
+    $.y = 3
 }
 
-!print: ("{}\n", .{!w.add:_})
+$main: @fn: (<>, void) = {
+    !print: ("{}\n", (!w.add))
+}

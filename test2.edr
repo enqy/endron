@@ -1,3 +1,18 @@
-$x:
-
-$y:
+$x: u32 = 9
+$y: u32 = 2
+$z = 1
+$AddData: @struct: <T:(comptime, type)> = {
+  $.x: T
+  $.y: T
+  $add: (pub, @fn: (<self:AddData>, T)) = {
+    $ix = self.x
+    ~ix
+  }
+}
+$w: !AddData:(u32) = {
+  $.x = 2
+  $.y = 3
+}
+$main: @fn: (<>, void) = {
+  !print:("{}\n", (!w.add))
+}
