@@ -36,8 +36,7 @@ pub const Node = struct {
         Map,
         MapItem,
 
-        Type,
-        Mod,
+        Discard,
 
         Scope,
         Block,
@@ -126,14 +125,8 @@ pub const Node = struct {
         colon_tok: usize,
     };
 
-    pub const Type = struct {
-        base: Node = .{ .kind = .Type },
-
-        tok: usize,
-    };
-
-    pub const Mod = struct {
-        base: Node = .{ .kind = .Mod },
+    pub const Discard = struct {
+        base: Node = .{ .kind = .Discard },
 
         tok: usize,
     };
@@ -240,13 +233,8 @@ pub const Node = struct {
                 try n.value.render(writer, level, source, tokens);
             },
 
-            .Type => {
-                const n = @fieldParentPtr(Type, "base", node);
-                _ = try writer.print("{}", .{source[tokens[n.tok].start..tokens[n.tok].end]});
-            },
-            .Mod => {
-                const n = @fieldParentPtr(Mod, "base", node);
-                _ = try writer.print("{}", .{source[tokens[n.tok].start..tokens[n.tok].end]});
+            .Discard => {
+                _ = try writer.writeAll("_");
             },
 
             .Scope => {

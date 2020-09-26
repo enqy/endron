@@ -199,20 +199,6 @@ pub const Parser = struct {
                 };
                 return &node.base;
             },
-            .Keyword_type, .Keyword_struct, .Keyword_fn, .Keyword_void => {
-                const node = try self.arena.create(Node.Type);
-                node.* = .{
-                    .tok = tok,
-                };
-                return &node.base;
-            },
-            .Keyword_pub, .Keyword_mut, .Keyword_comptime => {
-                const node = try self.arena.create(Node.Mod);
-                node.* = .{
-                    .tok = tok,
-                };
-                return &node.base;
-            },
             .LParen => return self.tuple(level + 1),
             .LAngle => return self.map(level + 1),
             .LBrace => return self.block(level + 1),
@@ -251,6 +237,13 @@ pub const Parser = struct {
                     return &node.base;
                 }
             },
+            .Underscore => {
+                const node = try self.arena.create(Node.Discard);
+                node.* = .{
+                    .tok = tok,
+                };
+                return &node.base;
+            },
             .Period => {
                 const itok = self.eatToken(.Ident) orelse std.debug.panic("expected ident found {}", .{self.tokens[self.index]});
                 const ident = try self.arena.create(Node.Ident);
@@ -263,13 +256,6 @@ pub const Parser = struct {
                     .rhs = &ident.base,
 
                     .period_tok = tok,
-                };
-                return &node.base;
-            },
-            .Keyword_struct, .Keyword_fn => {
-                const node = try self.arena.create(Node.Type);
-                node.* = .{
-                    .tok = tok,
                 };
                 return &node.base;
             },
