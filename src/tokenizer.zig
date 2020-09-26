@@ -44,27 +44,7 @@ pub const Token = struct {
         HashMinus,
         HashAsterisk,
         HashSlash,
-
-        Keyword_comptime,
-        Keyword_mut,
-        Keyword_pub,
-        Keyword_type,
-        Keyword_fn,
-        Keyword_struct,
-        Keyword_void,
     };
-
-    pub const Keywords = std.ComptimeStringMap(Kind, .{
-        .{ "comptime", .Keyword_comptime },
-        .{ "mut", .Keyword_mut },
-        .{ "pub", .Keyword_pub },
-        .{ "type", .Keyword_type },
-        .{ "fn", .Keyword_fn },
-        .{ "struct", .Keyword_struct },
-        .{ "void", .Keyword_void },
-
-        .{ "_", .Underscore },
-    });
 };
 
 pub fn tokenize(allocator: *Allocator, source: []const u8) ![]const Token {
@@ -243,8 +223,8 @@ pub const Tokenizer = struct {
                 .Ident => switch (c) {
                     'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
                     else => {
-                        if (Token.Keywords.get(self.source[res.start..self.index])) |kind| {
-                            res.kind = kind;
+                        if (std.mem.eql(u8, self.source[res.start..self.index], "_")) {
+                            res.kind = .Underscore;
                         }
                         break;
                     },
@@ -333,7 +313,7 @@ pub const Tokenizer = struct {
             switch (state) {
                 .Start => {},
                 .Ident => {
-                    res.kind = Token.Keywords.get(self.source[res.start..]) orelse .Ident;
+                    res.kind = .Ident;
                 },
                 .LineComment => res.kind = .LineComment,
                 .DocComment => res.kind = .DocComment,
