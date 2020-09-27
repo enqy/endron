@@ -5,22 +5,22 @@ $z = 1
 
 // This is just a test comment
 /// This is just a test doc comment
-$AddData: @struct: <T:(comptime, type)> = {
+$AddData: @struct<T:(comptime, type)> = {
     $.x: T
     $.y: T
 
-    $add: (pub, @fn: (<self:AddData>, T)) = {
+    $add: (pub, @fn(<self:AddData>, T)) = {
         $ix = self.x
 
-        ~ix
+        ~#+(ix, self.y)
     }
 }
 
-$w: !AddData: (u32) = {
+$w: !AddData(u32) = {
     $.x = 2
     $.y = 3
 }
 
-$main: @fn: (<>, void) = {
-    !print: ("{}\n", (!w.add))
+$main: @fn(<>, void) = {
+    !print("{}\n", (!w.add))
 }
