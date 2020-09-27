@@ -28,6 +28,10 @@ pub const Node = struct {
         Call,
         BuiltinCall,
         Ret,
+        MathAdd,
+        MathSub,
+        MathMul,
+        MathDiv,
 
         // exprs
         Ident,
@@ -42,6 +46,7 @@ pub const Node = struct {
         Block,
     };
 
+    // ops
     pub const Decl = struct {
         base: Node = .{ .kind = .Decl },
 
@@ -71,7 +76,6 @@ pub const Node = struct {
         args: ?*Node,
 
         bang_tok: usize,
-        colon_tok: ?usize,
     };
 
     pub const BuiltinCall = struct {
@@ -81,7 +85,6 @@ pub const Node = struct {
         args: *Node,
 
         at_tok: usize,
-        colon_tok: usize,
     };
 
     pub const Ret = struct {
@@ -92,6 +95,39 @@ pub const Node = struct {
         tilde_tok: usize,
     };
 
+    pub const MathAdd = struct {
+        base: Node = .{ .kind = .MathAdd },
+
+        args: *Node,
+
+        mtok: usize,
+    };
+
+    pub const MathSub = struct {
+        base: Node = .{ .kind = .MathSub },
+
+        args: *Node,
+
+        mtok: usize,
+    };
+
+    pub const MathMul = struct {
+        base: Node = .{ .kind = .MathMul },
+
+        args: *Node,
+
+        mtok: usize,
+    };
+
+    pub const MathDiv = struct {
+        base: Node = .{ .kind = .MathDiv },
+
+        args: *Node,
+
+        mtok: usize,
+    };
+
+    // exprs
     pub const Ident = struct {
         base: Node = .{ .kind = .Ident },
 
@@ -175,7 +211,6 @@ pub const Node = struct {
                 _ = try writer.writeAll("!");
                 try n.cap.render(writer, level, source, tokens);
                 if (n.args) |args| {
-                    _ = try writer.writeAll(":");
                     try args.render(writer, level, source, tokens);
                 }
             },
@@ -183,7 +218,6 @@ pub const Node = struct {
                 const n = @fieldParentPtr(BuiltinCall, "base", node);
                 _ = try writer.writeAll("@");
                 try n.builtin.render(writer, level, source, tokens);
-                _ = try writer.writeAll(": ");
                 try n.args.render(writer, level, source, tokens);
             },
             .Ret => {
@@ -191,6 +225,30 @@ pub const Node = struct {
 
                 _ = try writer.writeAll("~");
                 try n.cap.render(writer, level, source, tokens);
+            },
+            .MathAdd => {
+                const n = @fieldParentPtr(MathAdd, "base", node);
+
+                _ = try writer.writeAll("#+");
+                try n.args.render(writer, level, source, tokens);
+            },
+            .MathSub => {
+                const n = @fieldParentPtr(MathSub, "base", node);
+
+                _ = try writer.writeAll("#-");
+                try n.args.render(writer, level, source, tokens);
+            },
+            .MathMul => {
+                const n = @fieldParentPtr(MathMul, "base", node);
+
+                _ = try writer.writeAll("#*");
+                try n.args.render(writer, level, source, tokens);
+            },
+            .MathDiv => {
+                const n = @fieldParentPtr(MathDiv, "base", node);
+
+                _ = try writer.writeAll("#/");
+                try n.args.render(writer, level, source, tokens);
             },
 
             // exprs
