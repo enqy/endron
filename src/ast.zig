@@ -26,7 +26,7 @@ pub const Node = struct {
         Decl,
         Assign,
         Call,
-        BuiltinCall,
+        CompCall,
         Ret,
         MathAdd,
         MathSub,
@@ -78,11 +78,11 @@ pub const Node = struct {
         bang_tok: usize,
     };
 
-    pub const BuiltinCall = struct {
-        base: Node = .{ .kind = .BuiltinCall },
+    pub const CompCall = struct {
+        base: Node = .{ .kind = .CompCall },
 
-        builtin: *Node,
-        args: *Node,
+        cap: *Node,
+        args: ?*Node,
 
         at_tok: usize,
     };
@@ -210,15 +210,13 @@ pub const Node = struct {
 
                 _ = try writer.writeAll("!");
                 try n.cap.render(writer, level, source, tokens);
-                if (n.args) |args| {
-                    try args.render(writer, level, source, tokens);
-                }
+                if (n.args) |args| try args.render(writer, level, source, tokens);
             },
-            .BuiltinCall => {
-                const n = @fieldParentPtr(BuiltinCall, "base", node);
+            .CompCall => {
+                const n = @fieldParentPtr(CompCall, "base", node);
                 _ = try writer.writeAll("@");
-                try n.builtin.render(writer, level, source, tokens);
-                try n.args.render(writer, level, source, tokens);
+                try n.cap.render(writer, level, source, tokens);
+                if (n.args) |args| try args.render(writer, level, source, tokens);
             },
             .Ret => {
                 const n = @fieldParentPtr(Ret, "base", node);

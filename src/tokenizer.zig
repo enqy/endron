@@ -28,10 +28,10 @@ pub const Token = struct {
         Comma,
         Period,
         Pipe,
+        Underscore,
 
         Asterisk,
         Ampersand,
-        Underscore,
 
         Dollar,
         Bang,
@@ -40,10 +40,10 @@ pub const Token = struct {
 
         Equal,
 
-        HashPlus,
-        HashMinus,
-        HashAsterisk,
-        HashSlash,
+        HashAdd,
+        HashSub,
+        HashMul,
+        HashDiv,
     };
 };
 
@@ -122,11 +122,11 @@ pub const Tokenizer = struct {
                     '=' => {
                         state = .Equal;
                     },
-                    '/' => {
-                        state = .Slash;
-                    },
                     '#' => {
                         state = .Hash;
+                    },
+                    '/' => {
+                        state = .Slash;
                     },
                     '$' => {
                         res.kind = .Dollar;
@@ -223,9 +223,7 @@ pub const Tokenizer = struct {
                 .Ident => switch (c) {
                     'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
                     else => {
-                        if (std.mem.eql(u8, self.source[res.start..self.index], "_")) {
-                            res.kind = .Underscore;
-                        }
+                        if (std.mem.eql(u8, self.source[res.start..self.index], "_")) res.kind = .Underscore;
                         break;
                     },
                 },
@@ -250,34 +248,33 @@ pub const Tokenizer = struct {
                         break;
                     },
                 },
-                .Slash => switch (c) {
-                    '/' => state = .LineComment,
-                    else => std.debug.panic("unexpected single slash", .{}),
-                },
                 .Hash => switch (c) {
                     '+' => {
-                        res.kind = .HashPlus;
+                        res.kind = .HashAdd;
                         self.index += 1;
                         break;
                     },
                     '-' => {
-                        res.kind = .HashMinus;
+                        res.kind = .HashSub;
                         self.index += 1;
                         break;
                     },
                     '*' => {
-                        res.kind = .HashAsterisk;
+                        res.kind = .HashMul;
                         self.index += 1;
                         break;
                     },
                     '/' => {
-                        res.kind = .HashSlash;
+                        res.kind = .HashDiv;
                         self.index += 1;
                         break;
                     },
-                    else => std.debug.panic("unexpected math operator {c}", .{@truncate(u8, c)}),
+                    else => std.debug.panic("invalid math op {c}", .{@truncate(u8, c)}),
                 },
-
+                .Slash => switch (c) {
+                    '/' => state = .LineComment,
+                    else => @panic("unexpected /"),
+                },
                 // TODO: implment more checking
                 .LineComment => switch (c) {
                     '/' => state = .DocComment,
@@ -314,6 +311,7 @@ pub const Tokenizer = struct {
                 .Start => {},
                 .Ident => {
                     res.kind = .Ident;
+                    if (std.mem.eql(u8, self.source[res.start..self.index], "_")) res.kind = .Underscore;
                 },
                 .LineComment => res.kind = .LineComment,
                 .DocComment => res.kind = .DocComment,
@@ -340,22 +338,23 @@ fn expectTokens(source: []const u8, tokens: []const Token.Kind) void {
 
 test "tokenizer" {
     expectTokens(
-        \\! ~ $
+        \\! ~ $ @
         \\& *
-        \\=+ =- =* =/
+        \\#+ #- #* #/
         \\( ) { } < > [ ]
-        \\<<
-        \\, . | :
+        \\=
+        \\, . | : _
     , &[_]Token.Kind{
         .Bang,
         .Tilde,
         .Dollar,
+        .At,
         .Ampersand,
         .Asterisk,
-        .EqualPlus,
-        .EqualDash,
-        .EqualAsterisk,
-        .EqualSlash,
+        .HashAdd,
+        .HashSub,
+        .HashMul,
+        .HashDiv,
         .LParen,
         .RParen,
         .LBrace,
@@ -364,10 +363,11 @@ test "tokenizer" {
         .RAngle,
         .LBracket,
         .RBracket,
-        .LAngleLAngle,
+        .Equal,
         .Comma,
         .Period,
         .Pipe,
         .Colon,
+        .Underscore,
     });
 }

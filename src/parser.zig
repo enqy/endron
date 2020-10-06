@@ -74,7 +74,7 @@ pub const Parser = struct {
     pub fn op(self: *Parser, level: u8) anyerror!*Node {
         if (try self.write(level)) |node| return node;
         if (try self.call(level)) |node| return node;
-        if (try self.builtinCall(level)) |node| return node;
+        if (try self.compCall(level)) |node| return node;
         if (try self.ret(level)) |node| return node;
         std.debug.panic("invalid op {}", .{self.tokens[self.index]});
     }
@@ -85,7 +85,7 @@ pub const Parser = struct {
     }
 
     fn add(self: *Parser, level: u8) anyerror!?*Node {
-        const mtok = self.eatToken(.HashPlus) orelse return null;
+        const mtok = self.eatToken(.HashAdd) orelse return null;
         _ = self.eatToken(.LParen) orelse std.debug.panic("expected ( found {}", .{self.tokens[self.index]});
         const args = try self.tuple(level);
 
@@ -111,30 +111,38 @@ pub const Parser = struct {
         return &node.base;
     }
 
-    fn builtinCall(self: *Parser, level: u8) anyerror!?*Node {
+    fn compCall(self: *Parser, level: u8) anyerror!?*Node {
         const at_tok = self.eatToken(.At) orelse return null;
-        const builtin = try self.primaryExpr();
+        const cap = try self.ident();
 
         switch (self.tokens[self.index].kind) {
             .LParen, .LAngle => {
                 const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-
-                const node = try self.arena.create(Node.BuiltinCall);
+                const node = try self.arena.create(Node.CompCall);
                 node.* = .{
-                    .builtin = builtin,
+                    .cap = cap,
                     .args = args,
 
                     .at_tok = at_tok,
                 };
                 return &node.base;
             },
-            else => std.debug.panic("expected a map or a tuple, found {}", .{self.tokens[self.index + 1]}),
+            else => {
+                const node = try self.arena.create(Node.CompCall);
+                node.* = .{
+                    .cap = cap,
+                    .args = null,
+
+                    .at_tok = at_tok,
+                };
+                return &node.base;
+            },
         }
     }
 
     fn call(self: *Parser, level: u8) anyerror!?*Node {
         const bang_tok = self.eatToken(.Bang) orelse return null;
-        const cap = try self.primaryExpr();
+        const cap = try self.ident();
 
         switch (self.tokens[self.index].kind) {
             .LParen, .LAngle => {
@@ -163,7 +171,7 @@ pub const Parser = struct {
 
     fn write(self: *Parser, level: u8) anyerror!?*Node {
         const dollar_tok = self.eatToken(.Dollar) orelse return null;
-        const cap = try self.primaryExpr();
+        const cap = try self.ident();
 
         if (try self.decl(level, dollar_tok, cap)) |node| return node;
         if (try self.assign(level, dollar_tok, cap)) |node| return node;
@@ -210,48 +218,52 @@ pub const Parser = struct {
     fn expr(self: *Parser, level: u8) anyerror!?*Node {
         const tok = self.nextToken();
         const kind = self.tokens[tok].kind;
-        switch (kind) {
-            .Ident => {
-                self.index -= 1;
-                return self.primaryExpr();
-            },
-            .LiteralFloat, .LiteralInteger, .LiteralString => {
-                const node = try self.arena.create(Node.Literal);
-                node.* = .{
-                    .tok = tok,
-                };
-                return &node.base;
-            },
-            .LParen => return self.tuple(level + 1),
-            .LAngle => return self.map(level + 1),
-            .LBrace => return self.block(level + 1),
-            .At, .Bang => {
-                self.index -= 1;
-                return self.op(level);
-            },
-            .HashPlus, .HashMinus, .HashAsterisk, .HashSlash => {
-                self.index -= 1;
-                return self.math(level);
-            },
-            else => return null,
-        }
+        const e = blk: {
+            switch (kind) {
+                .Ident => {
+                    self.index -= 1;
+                    break :blk try self.ident();
+                },
+                .LiteralFloat, .LiteralInteger, .LiteralString => {
+                    const node = try self.arena.create(Node.Literal);
+                    node.* = .{
+                        .tok = tok,
+                    };
+                    break :blk &node.base;
+                },
+                .LParen => break :blk try self.tuple(level + 1),
+                .LAngle => break :blk try self.map(level + 1),
+                .LBrace => break :blk try self.block(level + 1),
+                .At, .Bang => {
+                    self.index -= 1;
+                    break :blk try self.op(level);
+                },
+                .HashAdd, .HashSub, .HashMul, .HashDiv => {
+                    self.index -= 1;
+                    break :blk try self.math(level);
+                },
+                else => break :blk null,
+            }
+        };
+
+        return e;
     }
 
-    fn primaryExpr(self: *Parser) anyerror!*Node {
+    fn ident(self: *Parser) anyerror!*Node {
         const tok = self.nextToken();
         const kind = self.tokens[tok].kind;
         switch (kind) {
             .Ident => {
                 if (self.tokens[tok + 1].kind == .Period) {
-                    const ident = try self.arena.create(Node.Ident);
-                    ident.* = .{
+                    const inode = try self.arena.create(Node.Ident);
+                    inode.* = .{
                         .tok = tok,
                     };
                     self.index += 1;
                     const node = try self.arena.create(Node.Scope);
                     node.* = .{
-                        .lhs = &ident.base,
-                        .rhs = try self.primaryExpr(),
+                        .lhs = &inode.base,
+                        .rhs = try self.ident(),
 
                         .period_tok = tok,
                     };
@@ -273,14 +285,14 @@ pub const Parser = struct {
             },
             .Period => {
                 const itok = self.eatToken(.Ident) orelse std.debug.panic("expected ident found {}", .{self.tokens[self.index]});
-                const ident = try self.arena.create(Node.Ident);
-                ident.* = .{
+                const inode = try self.arena.create(Node.Ident);
+                inode.* = .{
                     .tok = itok,
                 };
                 const node = try self.arena.create(Node.Scope);
                 node.* = .{
                     .lhs = null,
-                    .rhs = &ident.base,
+                    .rhs = &inode.base,
 
                     .period_tok = tok,
                 };
@@ -319,7 +331,7 @@ pub const Parser = struct {
                 .RAngle => break,
                 else => {
                     self.index -= 1;
-                    const key = try self.primaryExpr();
+                    const key = try self.ident();
                     const colon_tok = self.eatToken(.Colon) orelse std.debug.panic("expected : found {}", .{self.tokens[tok]});
                     const value = (try self.expr(level)) orelse @panic("expected value");
                     const node = try self.arena.create(Node.MapItem);

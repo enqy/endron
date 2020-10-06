@@ -3,6 +3,7 @@ const process = std.process;
 const mem = std.mem;
 
 const pa = @import("parser.zig");
+const an = @import("analysis.zig");
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -22,6 +23,8 @@ pub fn main() anyerror!void {
 
     var tree = try pa.parse(allocator, source);
     defer tree.deinit();
+
+    try an.analyze(tree);
 
     try tree.root.render(std.io.getStdOut().writer(), 0, source, tree.tokens);
 }
