@@ -7,9 +7,13 @@ pub const Decl = struct {
     cap: Ident,
     mods: u2,
     type_id: TypeId,
+
+    value: Expr,
 };
 
-pub const Expr = union(enum) {};
+pub const Expr = union(enum) {
+    Ident: Ident,
+};
 
 pub const ModFlags = enum(u2) {
     is_pub: 0b01,
