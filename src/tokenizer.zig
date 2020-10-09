@@ -37,6 +37,7 @@ pub const Token = struct {
         Bang,
         Tilde,
         At,
+        Percent,
 
         Equal,
 
@@ -145,6 +146,11 @@ pub const Tokenizer = struct {
                     },
                     '@' => {
                         res.kind = .At;
+                        self.index += 1;
+                        break;
+                    },
+                    '%' => {
+                        res.kind = .Percent;
                         self.index += 1;
                         break;
                     },
@@ -338,7 +344,7 @@ fn expectTokens(source: []const u8, tokens: []const Token.Kind) void {
 
 test "tokenizer" {
     expectTokens(
-        \\! ~ $ @
+        \\! ~ $ @ %
         \\& *
         \\#+ #- #* #/
         \\( ) { } < > [ ]
@@ -349,6 +355,7 @@ test "tokenizer" {
         .Tilde,
         .Dollar,
         .At,
+        .Percent,
         .Ampersand,
         .Asterisk,
         .HashAdd,

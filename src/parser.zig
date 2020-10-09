@@ -74,6 +74,7 @@ pub const Parser = struct {
     pub fn op(self: *Parser, level: u8) anyerror!*Node {
         if (try self.write(level)) |node| return node;
         if (try self.call(level)) |node| return node;
+        if (try self.builtin(level)) |node| return node;
         if (try self.compCall(level)) |node| return node;
         if (try self.ret(level)) |node| return node;
         std.debug.panic("invalid op {}", .{self.tokens[self.index]});
@@ -112,7 +113,7 @@ pub const Parser = struct {
     }
 
     fn compCall(self: *Parser, level: u8) anyerror!?*Node {
-        const at_tok = self.eatToken(.At) orelse return null;
+        const percent_tok = self.eatToken(.At) orelse return null;
         const cap = try self.ident();
 
         switch (self.tokens[self.index].kind) {
@@ -123,12 +124,41 @@ pub const Parser = struct {
                     .cap = cap,
                     .args = args,
 
-                    .at_tok = at_tok,
+                    .percent_tok = percent_tok,
                 };
                 return &node.base;
             },
             else => {
                 const node = try self.arena.create(Node.CompCall);
+                node.* = .{
+                    .cap = cap,
+                    .args = null,
+
+                    .percent_tok = percent_tok,
+                };
+                return &node.base;
+            },
+        }
+    }
+
+    fn builtin(self: *Parser, level: u8) anyerror!?*Node {
+        const at_tok = self.eatToken(.Percent) orelse return null;
+        const cap = try self.ident();
+
+        switch (self.tokens[self.index].kind) {
+            .LParen, .LAngle => {
+                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
+                const node = try self.arena.create(Node.Builtin);
+                node.* = .{
+                    .cap = cap,
+                    .args = args,
+
+                    .at_tok = at_tok,
+                };
+                return &node.base;
+            },
+            else => {
+                const node = try self.arena.create(Node.Builtin);
                 node.* = .{
                     .cap = cap,
                     .args = null,
@@ -234,7 +264,7 @@ pub const Parser = struct {
                 .LParen => break :blk try self.tuple(level + 1),
                 .LAngle => break :blk try self.map(level + 1),
                 .LBrace => break :blk try self.block(level + 1),
-                .At, .Bang => {
+                .At, .Bang, .Percent => {
                     self.index -= 1;
                     break :blk try self.op(level);
                 },
