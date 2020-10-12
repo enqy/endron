@@ -19,4 +19,8 @@ pub fn analyze(tree: *Tree) !void {
     }
 }
 
-pub const State = struct {};
+pub const State = struct {
+    pub const TypeInfo = struct {};
+    types: std.ArrayList(TypeInfo),
+    type_map: std.StringHashMap(usize),
+};
