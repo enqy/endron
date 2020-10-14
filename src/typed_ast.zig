@@ -1,6 +1,18 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+pub const Module = struct {
+    decls: std.StringHashMap(Decl),
+
+    pub fn init(arena: *Allocator) !*Module {
+        var module = try arena.create(Module);
+        module.* = Module{
+            .decls = std.StringHashMap(Decl).init(arena),
+        };
+        return module;
+    }
+};
+
 pub const Ident = []const u8;
 
 pub const Decl = struct {
@@ -8,7 +20,7 @@ pub const Decl = struct {
     mods: u2,
     type_id: TypeId,
 
-    value: Expr,
+    value: ?Expr,
 };
 
 pub const Expr = union(enum) {
