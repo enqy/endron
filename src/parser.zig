@@ -113,7 +113,7 @@ pub const Parser = struct {
     }
 
     fn compCall(self: *Parser, level: u8) anyerror!?*Node {
-        const percent_tok = self.eatToken(.At) orelse return null;
+        const percent_tok = self.eatToken(.Percent) orelse return null;
         const cap = try self.ident();
 
         switch (self.tokens[self.index].kind) {
@@ -142,7 +142,7 @@ pub const Parser = struct {
     }
 
     fn builtin(self: *Parser, level: u8) anyerror!?*Node {
-        const at_tok = self.eatToken(.Percent) orelse return null;
+        const at_tok = self.eatToken(.At) orelse return null;
         const cap = try self.ident();
 
         switch (self.tokens[self.index].kind) {

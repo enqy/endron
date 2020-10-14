@@ -16,6 +16,10 @@ pub const Tree = struct {
         self.gpa.free(self.tokens);
         self.arena.promote(self.gpa).deinit();
     }
+
+    pub fn getTokSource(self: *const Tree, tok: usize) []const u8 {
+        return self.source[self.tokens[tok].start..self.tokens[tok].end];
+    }
 };
 
 pub const Node = struct {
