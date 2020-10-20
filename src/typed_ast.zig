@@ -28,22 +28,7 @@ pub const Module = struct {
                     if (n.cap.kind != .Ident) @panic("Expected Ident Node for Decl Node Cap");
                     const cap = @fieldParentPtr(Node.Ident, "base", n.cap);
 
-                    const value: ?Expr = blk: {
-                        if (n.value) |val| {
-                            switch (val.kind) {
-                                .Literal => {
-                                    const valn = @fieldParentPtr(Node.Literal, "base", val);
-                                    switch (tree.tokens[valn.tok].kind) {
-                                        .LiteralInteger => {
-                                            break :blk Expr{ .Literal = .{ .Integer = try std.fmt.parseInt(i64, tree.getTokSource(valn.tok), 10) } };
-                                        },
-                                        else => @panic("not implemented"),
-                                    }
-                                },
-                                else => @panic("not implemented"),
-                            }
-                        } else break :blk null;
-                    };
+                    const value = if (n.value) |val| try transExpr(val, tree) else null;
 
                     try mod.insts.append(.{
                         .Decl = .{
@@ -60,20 +45,7 @@ pub const Module = struct {
                     if (n.cap.kind != .Ident) @panic("Expected Ident Node for Assign Node Cap");
                     const cap = @fieldParentPtr(Node.Ident, "base", n.cap);
 
-                    const value: Expr = blk: {
-                        switch (n.value.kind) {
-                            .Literal => {
-                                const valn = @fieldParentPtr(Node.Literal, "base", n.value);
-                                switch (tree.tokens[valn.tok].kind) {
-                                    .LiteralInteger => {
-                                        break :blk Expr{ .Literal = .{ .Integer = try std.fmt.parseInt(i64, tree.getTokSource(valn.tok), 10) } };
-                                    },
-                                    else => @panic("not implemented"),
-                                }
-                            },
-                            else => @panic("not implemented"),
-                        }
-                    };
+                    const value = try transExpr(n.value, tree);
 
                     try mod.insts.append(.{
                         .Assign = .{
@@ -94,6 +66,25 @@ pub const Module = struct {
         }
 
         return mod;
+    }
+
+    fn transExpr(node: *Node, tree: *const Tree) !Expr {
+        switch (node.kind) {
+            .Literal => {
+                const n = @fieldParentPtr(Node.Literal, "base", node);
+                switch (tree.tokens[n.tok].kind) {
+                    .LiteralInteger => {
+                        return Expr{ .Literal = .{ .Integer = try std.fmt.parseInt(i64, tree.getTokSource(n.tok), 10) } };
+                    },
+                    else => @panic("not implemented"),
+                }
+            },
+            .Ident => {
+                const n = @fieldParentPtr(Node.Ident, "base", node);
+                return Expr{ .Ident = tree.getTokSource(n.tok) };
+            },
+            else => @panic("not implemented"),
+        }
     }
 };
 
