@@ -5,76 +5,114 @@ const ast = @import("ast.zig");
 const Tree = ast.Tree;
 const Node = ast.Node;
 
-pub const Module = struct {
+pub const TypedTree = struct {
+    arena: *Allocator,
+
     types: std.ArrayList(Type),
     type_map: std.StringHashMap(TypeId),
 
-    insts: std.ArrayList(Inst),
+    root: Block,
 
-    pub fn transform(arena: *Allocator, tree: *const Tree) !Module {
-        var mod = Module{
+    pub fn transform(arena: *Allocator, tree: *const Tree) !TypedTree {
+        var ttree = TypedTree{
+            .arena = arena,
+
             .types = std.ArrayList(Type).init(arena),
             .type_map = std.StringHashMap(TypeId).init(arena),
 
-            .insts = std.ArrayList(Inst).init(arena),
+            .root = undefined,
         };
 
-        if (tree.root.kind != .Block) @panic("Expected Block Node");
-        var troot = @fieldParentPtr(Node.Block, "base", tree.root);
-        for (troot.nodes) |node| {
-            switch (node.kind) {
-                .Decl => {
-                    const n = @fieldParentPtr(Node.Decl, "base", node);
-                    if (n.cap.kind != .Ident) @panic("Expected Ident Node for Decl Node Cap");
-                    const cap = @fieldParentPtr(Node.Ident, "base", n.cap);
+        ttree.root = try ttree.transBlock(tree, tree.root);
 
-                    const value = if (n.value) |val| try transExpr(val, tree) else null;
+        try ttree.root.render(std.io.getStdOut().writer());
 
-                    try mod.insts.append(.{
-                        .Decl = .{
-                            .cap = tree.getTokSource(cap.tok),
-                            .mods = 0,
-                            .type_id = 0,
+        return ttree;
+    }
 
-                            .value = value,
-                        },
-                    });
-                },
-                .Assign => {
-                    const n = @fieldParentPtr(Node.Assign, "base", node);
-                    if (n.cap.kind != .Ident) @panic("Expected Ident Node for Assign Node Cap");
-                    const cap = @fieldParentPtr(Node.Ident, "base", n.cap);
+    fn transBlock(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Block {
+        var block = Block{
+            .ops = std.ArrayList(Op).init(ttree.arena),
+        };
 
-                    const value = try transExpr(n.value, tree);
-
-                    try mod.insts.append(.{
-                        .Assign = .{
-                            .cap = tree.getTokSource(cap.tok),
-                            .mods = 0,
-                            .type_id = 0,
-
-                            .value = value,
-                        },
-                    });
-                },
-                else => @panic("Expected Decl or Assign Node"),
+        if (node.kind != .Block) @panic("expected block node");
+        const n = @fieldParentPtr(Node.Block, "base", node);
+        for (n.nodes) |nn| {
+            switch (nn.kind) {
+                .Decl => try block.ops.append(.{ .Decl = try ttree.transDecl(tree, nn) }),
+                .Set => try block.ops.append(.{ .Set = try ttree.transSet(tree, nn) }),
+                .Builtin => try block.ops.append(.{ .Call = try ttree.transCall(tree, nn) }),
+                else => @panic("expected an inst node"),
             }
         }
 
-        for (mod.insts.items) |inst| {
-            try inst.render(std.io.getStdOut().writer());
-        }
-
-        return mod;
+        return block;
     }
 
-    fn transExpr(node: *Node, tree: *const Tree) !Expr {
+    fn transDecl(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Op.Decl {
+        const n = @fieldParentPtr(Node.Decl, "base", node);
+        if (n.cap.kind != .Ident) @panic("expected Ident Node for Decl Node Cap");
+        const cap = @fieldParentPtr(Node.Ident, "base", n.cap);
+
+        if (n.mods) |mods| {
+            const value = if (n.value) |val| try ttree.transExpr(tree, val) else null;
+
+            return Op.Decl{
+                .cap = tree.getTokSource(cap.tok),
+                .mods = 0,
+                .type_id = 0,
+
+                .value = value,
+            };
+        } else {
+            const value = if (n.value) |val| try ttree.transExpr(tree, val) else unreachable;
+
+            return Op.Decl{
+                .cap = tree.getTokSource(cap.tok),
+                .mods = 0,
+                .type_id = 0,
+
+                .value = value,
+            };
+        }
+    }
+
+    fn transSet(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Op.Set {
+        const n = @fieldParentPtr(Node.Set, "base", node);
+        if (n.cap.kind != .Ident) @panic("expected Ident Node for decl Node Cap");
+        const cap = @fieldParentPtr(Node.Ident, "base", n.cap);
+
+        const value = try ttree.transExpr(tree, n.value);
+
+        return Op.Set{
+            .cap = tree.getTokSource(cap.tok),
+            .mods = 0,
+            .type_id = 0,
+
+            .value = value,
+        };
+    }
+
+    fn transCall(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Op.Call {
+        const n = @fieldParentPtr(Node.Call, "base", node);
+        if (n.cap.kind != .Ident) @panic("expected ident node for call node cap");
+        const cap = @fieldParentPtr(Node.Ident, "base", n.cap);
+
+        return Op.Call{
+            .cap = tree.getTokSource(cap.tok),
+        };
+    }
+
+    fn transExpr(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Expr {
         switch (node.kind) {
             .Literal => {
                 const n = @fieldParentPtr(Node.Literal, "base", node);
                 switch (tree.tokens[n.tok].kind) {
                     .LiteralInteger => {
                         return Expr{ .Literal = .{ .Integer = try std.fmt.parseInt(i64, tree.getTokSource(n.tok), 10) } };
+                    },
+                    .LiteralString => {
+                        return Expr{ .Literal = .{ .String = tree.getTokSource(n.tok) } };
                     },
                     else => @panic("not implemented"),
                 }
@@ -88,7 +126,15 @@ pub const Module = struct {
     }
 };
 
-pub const Inst = union(enum) {
+pub const Block = struct {
+    ops: std.ArrayList(Op),
+
+    pub fn render(block: Block, writer: anytype) !void {
+        for (block.ops.items) |op| try op.render(writer);
+    }
+};
+
+pub const Op = union(enum) {
     pub const Decl = struct {
         cap: Ident,
         mods: u2,
@@ -97,7 +143,7 @@ pub const Inst = union(enum) {
         value: ?Expr,
     };
 
-    pub const Assign = struct {
+    pub const Set = struct {
         cap: Ident,
         mods: u2,
         type_id: TypeId,
@@ -105,21 +151,16 @@ pub const Inst = union(enum) {
         value: Expr,
     };
 
-    Decl: Decl,
-    Assign: Assign,
+    pub const Call = struct {
+        cap: Ident,
+    };
 
-    pub fn render(inst: Inst, writer: anytype) anyerror!void {
-        switch (inst) {
-            .Decl => |is| {
-                _ = try writer.writeAll("Decl: ");
-                _ = try writer.print("{}", .{is});
-            },
-            .Assign => |is| {
-                _ = try writer.writeAll("Assign: ");
-                _ = try writer.print("{}", .{is});
-            },
-        }
-        _ = try writer.writeAll("\n");
+    Decl: Decl,
+    Set: Set,
+    Call: Call,
+
+    pub fn render(op: Op, writer: anytype) anyerror!void {
+        try writer.print("{}\n", .{op});
     }
 };
 
@@ -127,6 +168,7 @@ pub const Ident = []const u8;
 
 pub const Literal = union(enum) {
     Integer: i64,
+    String: []const u8,
 };
 
 pub const Expr = union(enum) {

@@ -6,18 +6,18 @@ const Tree = ast.Tree;
 const Node = ast.Node;
 
 const tast = @import("typed_ast.zig");
-const Module = tast.Module;
+const TypedTree = tast.TypedTree;
 
-const Pass = fn (*Allocator, *const Tree, *Module) anyerror!void;
+const Pass = fn (*Allocator, *const Tree, *TypedTree) anyerror!void;
 const Passes = [_]Pass{};
 
 pub fn analyze(tree: *const Tree) !void {
     var arena = std.heap.ArenaAllocator.init(tree.gpa);
     defer arena.deinit();
 
-    var mod = try Module.transform(&arena.allocator, tree);
+    var ttree = try TypedTree.transform(&arena.allocator, tree);
 
     for (Passes) |pass| {
-        try pass(&arena.allocator, tree, &mod);
+        try pass(&arena.allocator, tree, &ttree);
     }
 }

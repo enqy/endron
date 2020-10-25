@@ -28,7 +28,7 @@ pub const Node = struct {
     pub const Kind = enum {
         // ops
         Decl,
-        Assign,
+        Set,
         Call,
         Builtin,
         CompCall,
@@ -56,21 +56,21 @@ pub const Node = struct {
         base: Node = .{ .kind = .Decl },
 
         cap: *Node,
-        mods: *Node,
+        mods: ?*Node,
         value: ?*Node,
 
         dollar_tok: usize,
-        colon_tok: usize,
+        colon_tok: ?usize,
         eql_tok: ?usize,
     };
 
-    pub const Assign = struct {
-        base: Node = .{ .kind = .Assign },
+    pub const Set = struct {
+        base: Node = .{ .kind = .Set },
 
         cap: *Node,
         value: *Node,
 
-        dollar_tok: usize,
+        tilde_tok: usize,
         eql_tok: usize,
     };
 
@@ -106,7 +106,7 @@ pub const Node = struct {
 
         cap: *Node,
 
-        tilde_tok: usize,
+        caret_tok: usize,
     };
 
     pub const MathAdd = struct {
@@ -204,17 +204,19 @@ pub const Node = struct {
 
                 _ = try writer.writeAll("$");
                 try n.cap.render(writer, level, source, tokens);
-                _ = try writer.writeAll(": ");
-                try n.mods.render(writer, level, source, tokens);
+                if (n.mods) |mods| {
+                    _ = try writer.writeAll(": ");
+                    try mods.render(writer, level, source, tokens);
+                }
                 if (n.value) |value| {
                     _ = try writer.writeAll(" = ");
                     try value.render(writer, level, source, tokens);
                 }
             },
-            .Assign => {
-                const n = @fieldParentPtr(Assign, "base", node);
+            .Set => {
+                const n = @fieldParentPtr(Set, "base", node);
 
-                _ = try writer.writeAll("$");
+                _ = try writer.writeAll("~");
                 try n.cap.render(writer, level, source, tokens);
                 _ = try writer.writeAll(" = ");
                 try n.value.render(writer, level, source, tokens);
@@ -241,7 +243,7 @@ pub const Node = struct {
             .Ret => {
                 const n = @fieldParentPtr(Ret, "base", node);
 
-                _ = try writer.writeAll("~");
+                _ = try writer.writeAll("^");
                 try n.cap.render(writer, level, source, tokens);
             },
             .MathAdd => {

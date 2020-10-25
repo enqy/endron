@@ -12,13 +12,13 @@ $AddData = @struct(<T:type>, {
     $add: pub = @fn(<self:AddData>, T, {
         $ix = self.x
 
-        ~#+(ix, self.y)
+        ^#+(ix, self.y)
     })
 })
 
 $w: !AddData(u32) = {
-    $.x = 2
-    $.y = 3
+    ~.x = 2
+    ~.y = 3
 }
 
 $main = @fn(<>, void, {

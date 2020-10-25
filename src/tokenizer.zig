@@ -38,6 +38,7 @@ pub const Token = struct {
         Tilde,
         At,
         Percent,
+        Caret,
 
         Equal,
 
@@ -151,6 +152,11 @@ pub const Tokenizer = struct {
                     },
                     '%' => {
                         res.kind = .Percent;
+                        self.index += 1;
+                        break;
+                    },
+                    '^' => {
+                        res.kind = .Caret;
                         self.index += 1;
                         break;
                     },

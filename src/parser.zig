@@ -72,7 +72,8 @@ pub const Parser = struct {
     }
 
     pub fn op(self: *Parser, level: u8) anyerror!*Node {
-        if (try self.write(level)) |node| return node;
+        if (try self.decl(level)) |node| return node;
+        if (try self.set(level)) |node| return node;
         if (try self.call(level)) |node| return node;
         if (try self.builtin(level)) |node| return node;
         if (try self.compCall(level)) |node| return node;
@@ -100,14 +101,14 @@ pub const Parser = struct {
     }
 
     fn ret(self: *Parser, level: u8) anyerror!?*Node {
-        const tilde_tok = self.eatToken(.Tilde) orelse return null;
+        const caret_tok = self.eatToken(.Caret) orelse return null;
         const cap = (try self.expr(level)) orelse @panic("expected expr to return");
 
         const node = try self.arena.create(Node.Ret);
         node.* = .{
             .cap = cap,
 
-            .tilde_tok = tilde_tok,
+            .caret_tok = caret_tok,
         };
         return &node.base;
     }
@@ -199,16 +200,35 @@ pub const Parser = struct {
         }
     }
 
-    fn write(self: *Parser, level: u8) anyerror!?*Node {
+    fn set(self: *Parser, level: u8) anyerror!?*Node {
+        const tilde_tok = self.eatToken(.Tilde) orelse return null;
+        const cap = try self.ident();
+
+        const eql_tok = self.eatToken(.Equal) orelse @panic("expected =");
+
+        const value = (try self.expr(level)) orelse @panic("expected value");
+
+        const node = try self.arena.create(Node.Set);
+        node.* = .{
+            .cap = cap,
+            .value = value,
+
+            .tilde_tok = tilde_tok,
+            .eql_tok = eql_tok,
+        };
+        return &node.base;
+    }
+
+    fn decl(self: *Parser, level: u8) anyerror!?*Node {
         const dollar_tok = self.eatToken(.Dollar) orelse return null;
         const cap = try self.ident();
 
-        if (try self.decl(level, dollar_tok, cap)) |node| return node;
-        if (try self.assign(level, dollar_tok, cap)) |node| return node;
+        if (try self.declWithMods(level, dollar_tok, cap)) |node| return node;
+        if (try self.declNoMods(level, dollar_tok, cap)) |node| return node;
         @panic("expected a : or a =");
     }
 
-    fn decl(self: *Parser, level: u8, dollar_tok: usize, cap: *Node) anyerror!?*Node {
+    fn declWithMods(self: *Parser, level: u8, dollar_tok: usize, cap: *Node) anyerror!?*Node {
         const colon_tok = self.eatToken(.Colon) orelse return null;
 
         const mods = (try self.expr(level)) orelse @panic("expected a expr");
@@ -229,17 +249,19 @@ pub const Parser = struct {
         return &node.base;
     }
 
-    fn assign(self: *Parser, level: u8, dollar_tok: usize, cap: *Node) anyerror!?*Node {
+    fn declNoMods(self: *Parser, level: u8, dollar_tok: usize, cap: *Node) anyerror!?*Node {
         const eql_tok = self.eatToken(.Equal) orelse return null;
 
         const value = (try self.expr(level)) orelse @panic("expected value");
 
-        const node = try self.arena.create(Node.Assign);
+        const node = try self.arena.create(Node.Decl);
         node.* = .{
             .cap = cap,
+            .mods = null,
             .value = value,
 
             .dollar_tok = dollar_tok,
+            .colon_tok = null,
             .eql_tok = eql_tok,
         };
         return &node.base;
