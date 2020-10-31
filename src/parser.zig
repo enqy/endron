@@ -76,8 +76,8 @@ pub const Parser = struct {
         if (try self.set(level)) |node| return node;
         if (try self.call(level)) |node| return node;
         if (try self.builtin(level)) |node| return node;
-        if (try self.compCall(level)) |node| return node;
         if (try self.ret(level)) |node| return node;
+        if (try self.macro(level)) |node| return node;
         std.debug.panic("invalid op {}", .{self.tokens[self.index]});
     }
 
@@ -100,6 +100,35 @@ pub const Parser = struct {
         return &node.base;
     }
 
+    fn macro(self: *Parser, level: u8) anyerror!?*Node {
+        const percent_tok = self.eatToken(.Percent) orelse return null;
+        const cap = try self.ident();
+
+        switch (self.tokens[self.index].kind) {
+            .LParen, .LAngle => {
+                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
+                const node = try self.arena.create(Node.Macro);
+                node.* = .{
+                    .cap = cap,
+                    .args = args,
+
+                    .percent_tok = percent_tok,
+                };
+                return &node.base;
+            },
+            else => {
+                const node = try self.arena.create(Node.Macro);
+                node.* = .{
+                    .cap = cap,
+                    .args = null,
+
+                    .percent_tok = percent_tok,
+                };
+                return &node.base;
+            },
+        }
+    }
+
     fn ret(self: *Parser, level: u8) anyerror!?*Node {
         const caret_tok = self.eatToken(.Caret) orelse return null;
         const cap = (try self.expr(level)) orelse @panic("expected expr to return");
@@ -111,35 +140,6 @@ pub const Parser = struct {
             .caret_tok = caret_tok,
         };
         return &node.base;
-    }
-
-    fn compCall(self: *Parser, level: u8) anyerror!?*Node {
-        const percent_tok = self.eatToken(.Percent) orelse return null;
-        const cap = try self.ident();
-
-        switch (self.tokens[self.index].kind) {
-            .LParen, .LAngle => {
-                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.CompCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = args,
-
-                    .percent_tok = percent_tok,
-                };
-                return &node.base;
-            },
-            else => {
-                const node = try self.arena.create(Node.CompCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = null,
-
-                    .percent_tok = percent_tok,
-                };
-                return &node.base;
-            },
-        }
     }
 
     fn builtin(self: *Parser, level: u8) anyerror!?*Node {

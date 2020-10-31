@@ -31,8 +31,8 @@ pub const Node = struct {
         Set,
         Call,
         Builtin,
-        CompCall,
         Ret,
+        Macro,
         MathAdd,
         MathSub,
         MathMul,
@@ -92,21 +92,21 @@ pub const Node = struct {
         at_tok: usize,
     };
 
-    pub const CompCall = struct {
-        base: Node = .{ .kind = .CompCall },
-
-        cap: *Node,
-        args: ?*Node,
-
-        percent_tok: usize,
-    };
-
     pub const Ret = struct {
         base: Node = .{ .kind = .Ret },
 
         cap: *Node,
 
         caret_tok: usize,
+    };
+
+    pub const Macro = struct {
+        base: Node = .{ .kind = .Macro },
+
+        cap: *Node,
+        args: ?*Node,
+
+        percent_tok: usize,
     };
 
     pub const MathAdd = struct {
@@ -234,17 +234,17 @@ pub const Node = struct {
                 try n.cap.render(writer, level, source, tokens);
                 if (n.args) |args| try args.render(writer, level, source, tokens);
             },
-            .CompCall => {
-                const n = @fieldParentPtr(CompCall, "base", node);
-                _ = try writer.writeAll("%");
-                try n.cap.render(writer, level, source, tokens);
-                if (n.args) |args| try args.render(writer, level, source, tokens);
-            },
             .Ret => {
                 const n = @fieldParentPtr(Ret, "base", node);
 
                 _ = try writer.writeAll("^");
                 try n.cap.render(writer, level, source, tokens);
+            },
+            .Macro => {
+                const n = @fieldParentPtr(Macro, "base", node);
+                _ = try writer.writeAll("%");
+                try n.cap.render(writer, level, source, tokens);
+                if (n.args) |args| try args.render(writer, level, source, tokens);
             },
             .MathAdd => {
                 const n = @fieldParentPtr(MathAdd, "base", node);
@@ -327,7 +327,13 @@ pub const Node = struct {
             .Block => {
                 const n = @fieldParentPtr(Block, "base", node);
 
-                if (level != 0) _ = try writer.writeAll("{\n");
+                if (level != 0) {
+                    if (n.nodes.len == 0) {
+                        _ = try writer.writeAll("{");
+                    } else {
+                        _ = try writer.writeAll("{\n}");
+                    }
+                }
                 for (n.nodes) |nod| {
                     var i: u8 = 0;
                     while (i < level) : (i += 1) _ = try writer.writeAll("  ");

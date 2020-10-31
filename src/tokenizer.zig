@@ -73,13 +73,11 @@ pub const Tokenizer = struct {
     const State = enum {
         Start,
 
-        LiteralString,
-        LiteralInteger,
-        LiteralFloat,
-
         Ident,
+        String,
         Zero,
-        Number,
+        Integer,
+        Float,
 
         Slash,
         LineComment,
@@ -108,7 +106,7 @@ pub const Tokenizer = struct {
                 .Start => switch (c) {
                     ' ', '\n', '\t', '\r' => res.start = self.index + 1,
                     '"' => {
-                        state = .LiteralString;
+                        state = .String;
                         res.kind = .LiteralString;
                     },
                     'a'...'z', 'A'...'Z', '_' => {
@@ -119,7 +117,7 @@ pub const Tokenizer = struct {
                         state = .Zero;
                     },
                     '1'...'9' => {
-                        state = .Number;
+                        state = .Integer;
                     },
                     '=' => {
                         state = .Equal;
@@ -239,18 +237,29 @@ pub const Tokenizer = struct {
                         break;
                     },
                 },
-                // TODO: support floats
                 .Zero => switch (c) {
+                    '.' => {
+                        state = .Float;
+                    },
+                    '0'...'9' => {
+                        state = .Integer;
+                    },
                     else => {
                         res.kind = .LiteralInteger;
                         break;
                     },
                 },
-                // TODO: support floats
-                .Number => switch (c) {
+                .Integer => switch (c) {
                     '0'...'9' => {},
                     else => {
                         res.kind = .LiteralInteger;
+                        break;
+                    },
+                },
+                .Float => switch (c) {
+                    '0'...'9' => {},
+                    else => {
+                        res.kind = .LiteralFloat;
                         break;
                     },
                 },
@@ -308,7 +317,7 @@ pub const Tokenizer = struct {
                     else => {},
                 },
                 // TODO: implment more checking
-                .LiteralString => switch (c) {
+                .String => switch (c) {
                     '"' => {
                         res.kind = .LiteralString;
                         self.index += 1;
@@ -316,7 +325,6 @@ pub const Tokenizer = struct {
                     },
                     else => {},
                 },
-                else => std.debug.panic("not implemented {}", .{state}),
             }
         } else {
             switch (state) {
@@ -327,9 +335,10 @@ pub const Tokenizer = struct {
                 },
                 .LineComment => res.kind = .LineComment,
                 .DocComment => res.kind = .DocComment,
-                .LiteralString => std.debug.panic("untermiated string", .{}),
+                .String => std.debug.panic("untermiated string", .{}),
                 .Zero => res.kind = .LiteralInteger,
-                .Number => res.kind = .LiteralInteger,
+                .Integer => res.kind = .LiteralInteger,
+                .Float => res.kind = .LiteralFloat,
                 else => std.debug.panic("unexpected EOF", .{}),
             }
         }
@@ -348,9 +357,9 @@ fn expectTokens(source: []const u8, tokens: []const Token.Kind) void {
     std.testing.expect(tokenizer.next().kind == .Eof);
 }
 
-test "tokenizer" {
+test "symbols" {
     expectTokens(
-        \\! ~ $ @ %
+        \\! ~ $ @ % ^
         \\& *
         \\#+ #- #* #/
         \\( ) { } < > [ ]
@@ -362,6 +371,7 @@ test "tokenizer" {
         .Dollar,
         .At,
         .Percent,
+        .Caret,
         .Ampersand,
         .Asterisk,
         .HashAdd,
@@ -382,5 +392,33 @@ test "tokenizer" {
         .Pipe,
         .Colon,
         .Underscore,
+    });
+}
+
+test "literals" {
+    expectTokens(
+        \\"test"
+        \\00123
+        \\0123
+        \\1230
+        \\0.939
+    , &[_]Token.Kind{
+        .LiteralString,
+        .LiteralInteger,
+        .LiteralInteger,
+        .LiteralInteger,
+        .LiteralFloat,
+    });
+}
+
+test "other" {
+    expectTokens(
+        \\ident
+        \\//line
+        \\///doc
+    , &[_]Token.Kind{
+        .Ident,
+        .LineComment,
+        .DocComment,
     });
 }
