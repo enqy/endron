@@ -331,7 +331,7 @@ pub const Node = struct {
                     if (n.nodes.len == 0) {
                         _ = try writer.writeAll("{");
                     } else {
-                        _ = try writer.writeAll("{\n}");
+                        _ = try writer.writeAll("{\n");
                     }
                 }
                 for (n.nodes) |nod| {
