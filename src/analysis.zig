@@ -22,5 +22,5 @@ pub const State = struct {
     pub const TypeId = usize;
 
     types: std.ArrayList(Type),
-    type_mad: std.StringHashMap(TypeId),
+    type_map: std.StringHashMap(TypeId),
 };
