@@ -16,10 +16,10 @@ $AddData = @struct(<T:type>, {
     })
 })
 
-$w: !AddData(u32) = {
+$w = !AddData((u32), {
     ~.x = 2
     ~.y = 3
-}
+})
 
 $main = @fn(<>, void, {
     !print("{}\n", (!w.add))
