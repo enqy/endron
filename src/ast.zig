@@ -30,9 +30,9 @@ pub const Node = struct {
         Decl,
         Set,
         Call,
-        Builtin,
+        BuiltinCall,
+        MacroCall,
         Ret,
-        Macro,
         MathAdd,
         MathSub,
         MathMul,
@@ -83,13 +83,22 @@ pub const Node = struct {
         bang_tok: usize,
     };
 
-    pub const Builtin = struct {
-        base: Node = .{ .kind = .Builtin },
+    pub const BuiltinCall = struct {
+        base: Node = .{ .kind = .BuiltinCall },
 
         cap: *Node,
         args: ?*Node,
 
         at_tok: usize,
+    };
+
+    pub const MacroCall = struct {
+        base: Node = .{ .kind = .MacroCall },
+
+        cap: *Node,
+        args: ?*Node,
+
+        percent_tok: usize,
     };
 
     pub const Ret = struct {
@@ -98,15 +107,6 @@ pub const Node = struct {
         cap: *Node,
 
         caret_tok: usize,
-    };
-
-    pub const Macro = struct {
-        base: Node = .{ .kind = .Macro },
-
-        cap: *Node,
-        args: ?*Node,
-
-        percent_tok: usize,
     };
 
     pub const MathAdd = struct {
@@ -228,9 +228,15 @@ pub const Node = struct {
                 try n.cap.render(writer, level, source, tokens);
                 if (n.args) |args| try args.render(writer, level, source, tokens);
             },
-            .Builtin => {
-                const n = @fieldParentPtr(Builtin, "base", node);
+            .BuiltinCall => {
+                const n = @fieldParentPtr(BuiltinCall, "base", node);
                 _ = try writer.writeAll("@");
+                try n.cap.render(writer, level, source, tokens);
+                if (n.args) |args| try args.render(writer, level, source, tokens);
+            },
+            .MacroCall => {
+                const n = @fieldParentPtr(MacroCall, "base", node);
+                _ = try writer.writeAll("%");
                 try n.cap.render(writer, level, source, tokens);
                 if (n.args) |args| try args.render(writer, level, source, tokens);
             },
@@ -239,12 +245,6 @@ pub const Node = struct {
 
                 _ = try writer.writeAll("^");
                 try n.cap.render(writer, level, source, tokens);
-            },
-            .Macro => {
-                const n = @fieldParentPtr(Macro, "base", node);
-                _ = try writer.writeAll("%");
-                try n.cap.render(writer, level, source, tokens);
-                if (n.args) |args| try args.render(writer, level, source, tokens);
             },
             .MathAdd => {
                 const n = @fieldParentPtr(MathAdd, "base", node);

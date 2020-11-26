@@ -107,7 +107,7 @@ pub const Parser = struct {
         switch (self.tokens[self.index].kind) {
             .LParen, .LAngle => {
                 const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.Macro);
+                const node = try self.arena.create(Node.MacroCall);
                 node.* = .{
                     .cap = cap,
                     .args = args,
@@ -117,7 +117,7 @@ pub const Parser = struct {
                 return &node.base;
             },
             else => {
-                const node = try self.arena.create(Node.Macro);
+                const node = try self.arena.create(Node.MacroCall);
                 node.* = .{
                     .cap = cap,
                     .args = null,
@@ -149,7 +149,7 @@ pub const Parser = struct {
         switch (self.tokens[self.index].kind) {
             .LParen, .LAngle => {
                 const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.Builtin);
+                const node = try self.arena.create(Node.BuiltinCall);
                 node.* = .{
                     .cap = cap,
                     .args = args,
@@ -159,7 +159,7 @@ pub const Parser = struct {
                 return &node.base;
             },
             else => {
-                const node = try self.arena.create(Node.Builtin);
+                const node = try self.arena.create(Node.BuiltinCall);
                 node.* = .{
                     .cap = cap,
                     .args = null,
