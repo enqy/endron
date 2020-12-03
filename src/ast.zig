@@ -32,7 +32,7 @@ pub const Node = struct {
         Call,
         BuiltinCall,
         MacroCall,
-        Ret,
+        Branch,
         MathAdd,
         MathSub,
         MathMul,
@@ -43,7 +43,7 @@ pub const Node = struct {
         Literal,
         Tuple,
         Map,
-        MapItem,
+        MapEntry,
 
         Discard,
 
@@ -101,10 +101,11 @@ pub const Node = struct {
         percent_tok: usize,
     };
 
-    pub const Ret = struct {
-        base: Node = .{ .kind = .Ret },
+    pub const Branch = struct {
+        base: Node = .{ .kind = .Branch },
 
         cap: *Node,
+        args: *Node,
 
         caret_tok: usize,
     };
@@ -166,8 +167,8 @@ pub const Node = struct {
         nodes: []*Node,
     };
 
-    pub const MapItem = struct {
-        base: Node = .{ .kind = .MapItem },
+    pub const MapEntry = struct {
+        base: Node = .{ .kind = .MapEntry },
 
         key: *Node,
         value: *Node,
@@ -240,11 +241,12 @@ pub const Node = struct {
                 try n.cap.render(writer, level, source, tokens);
                 if (n.args) |args| try args.render(writer, level, source, tokens);
             },
-            .Ret => {
-                const n = @fieldParentPtr(Ret, "base", node);
+            .Branch => {
+                const n = @fieldParentPtr(Branch, "base", node);
 
                 _ = try writer.writeAll("^");
                 try n.cap.render(writer, level, source, tokens);
+                try n.args.render(writer, level, source, tokens);
             },
             .MathAdd => {
                 const n = @fieldParentPtr(MathAdd, "base", node);
@@ -303,8 +305,8 @@ pub const Node = struct {
                 }
                 _ = try writer.writeAll(">");
             },
-            .MapItem => {
-                const n = @fieldParentPtr(MapItem, "base", node);
+            .MapEntry => {
+                const n = @fieldParentPtr(MapEntry, "base", node);
 
                 try n.key.render(writer, level, source, tokens);
                 _ = try writer.writeAll(":");

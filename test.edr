@@ -12,7 +12,7 @@ $AddData = @struct(<T:type>, {
     $add: pub = @fn(<self:AddData>, T, {
         $ix = self.x
 
-        ^#+(ix, self.y)
+        ^ret(#+(ix, self.y))
     })
 })
 

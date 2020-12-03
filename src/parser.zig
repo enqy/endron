@@ -17,6 +17,7 @@ pub fn parse(gpa: *Allocator, source: []const u8) !*Tree {
 
     var parser = Parser{
         .tokens = tokens,
+        .source = source,
 
         .arena = &arena.allocator,
         .gpa = gpa,
@@ -44,6 +45,7 @@ pub fn parse(gpa: *Allocator, source: []const u8) !*Tree {
 
 pub const Parser = struct {
     tokens: []const Token,
+    source: []const u8,
 
     arena: *Allocator,
     gpa: *Allocator,
@@ -76,147 +78,9 @@ pub const Parser = struct {
         if (try self.set(level)) |node| return node;
         if (try self.call(level)) |node| return node;
         if (try self.builtin(level)) |node| return node;
-        if (try self.ret(level)) |node| return node;
+        if (try self.branch(level)) |node| return node;
         if (try self.macro(level)) |node| return node;
         std.debug.panic("invalid op {}", .{self.tokens[self.index]});
-    }
-
-    fn math(self: *Parser, level: u8) anyerror!?*Node {
-        if (try self.add(level)) |node| return node;
-        return null;
-    }
-
-    fn add(self: *Parser, level: u8) anyerror!?*Node {
-        const mtok = self.eatToken(.HashAdd) orelse return null;
-        _ = self.eatToken(.LParen) orelse std.debug.panic("expected ( found {}", .{self.tokens[self.index]});
-        const args = try self.tuple(level);
-
-        const node = try self.arena.create(Node.MathAdd);
-        node.* = .{
-            .args = args,
-
-            .mtok = mtok,
-        };
-        return &node.base;
-    }
-
-    fn macro(self: *Parser, level: u8) anyerror!?*Node {
-        const percent_tok = self.eatToken(.Percent) orelse return null;
-        const cap = try self.ident();
-
-        switch (self.tokens[self.index].kind) {
-            .LParen, .LAngle => {
-                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.MacroCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = args,
-
-                    .percent_tok = percent_tok,
-                };
-                return &node.base;
-            },
-            else => {
-                const node = try self.arena.create(Node.MacroCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = null,
-
-                    .percent_tok = percent_tok,
-                };
-                return &node.base;
-            },
-        }
-    }
-
-    fn ret(self: *Parser, level: u8) anyerror!?*Node {
-        const caret_tok = self.eatToken(.Caret) orelse return null;
-        const cap = (try self.expr(level)) orelse @panic("expected expr to return");
-
-        const node = try self.arena.create(Node.Ret);
-        node.* = .{
-            .cap = cap,
-
-            .caret_tok = caret_tok,
-        };
-        return &node.base;
-    }
-
-    fn builtin(self: *Parser, level: u8) anyerror!?*Node {
-        const at_tok = self.eatToken(.At) orelse return null;
-        const cap = try self.ident();
-
-        switch (self.tokens[self.index].kind) {
-            .LParen, .LAngle => {
-                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.BuiltinCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = args,
-
-                    .at_tok = at_tok,
-                };
-                return &node.base;
-            },
-            else => {
-                const node = try self.arena.create(Node.BuiltinCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = null,
-
-                    .at_tok = at_tok,
-                };
-                return &node.base;
-            },
-        }
-    }
-
-    fn call(self: *Parser, level: u8) anyerror!?*Node {
-        const bang_tok = self.eatToken(.Bang) orelse return null;
-        const cap = try self.ident();
-
-        switch (self.tokens[self.index].kind) {
-            .LParen, .LAngle => {
-                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.Call);
-                node.* = .{
-                    .cap = cap,
-                    .args = args,
-
-                    .bang_tok = bang_tok,
-                };
-                return &node.base;
-            },
-            else => {
-                const node = try self.arena.create(Node.Call);
-                node.* = .{
-                    .cap = cap,
-                    .args = null,
-
-                    .bang_tok = bang_tok,
-                };
-                return &node.base;
-            },
-        }
-    }
-
-    fn set(self: *Parser, level: u8) anyerror!?*Node {
-        const tilde_tok = self.eatToken(.Tilde) orelse return null;
-        const cap = try self.ident();
-
-        const eql_tok = self.eatToken(.Equal) orelse @panic("expected =");
-
-        const value = (try self.expr(level)) orelse @panic("expected value");
-
-        const node = try self.arena.create(Node.Set);
-        node.* = .{
-            .cap = cap,
-            .value = value,
-
-            .tilde_tok = tilde_tok,
-            .eql_tok = eql_tok,
-        };
-        return &node.base;
     }
 
     fn decl(self: *Parser, level: u8) anyerror!?*Node {
@@ -263,6 +127,147 @@ pub const Parser = struct {
             .dollar_tok = dollar_tok,
             .colon_tok = null,
             .eql_tok = eql_tok,
+        };
+        return &node.base;
+    }
+
+    fn set(self: *Parser, level: u8) anyerror!?*Node {
+        const tilde_tok = self.eatToken(.Tilde) orelse return null;
+        const cap = try self.ident();
+
+        const eql_tok = self.eatToken(.Equal) orelse @panic("expected =");
+
+        const value = (try self.expr(level)) orelse @panic("expected value");
+
+        const node = try self.arena.create(Node.Set);
+        node.* = .{
+            .cap = cap,
+            .value = value,
+
+            .tilde_tok = tilde_tok,
+            .eql_tok = eql_tok,
+        };
+        return &node.base;
+    }
+
+    fn call(self: *Parser, level: u8) anyerror!?*Node {
+        const bang_tok = self.eatToken(.Bang) orelse return null;
+        const cap = try self.ident();
+
+        switch (self.tokens[self.index].kind) {
+            .LParen, .LAngle => {
+                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
+                const node = try self.arena.create(Node.Call);
+                node.* = .{
+                    .cap = cap,
+                    .args = args,
+
+                    .bang_tok = bang_tok,
+                };
+                return &node.base;
+            },
+            else => {
+                const node = try self.arena.create(Node.Call);
+                node.* = .{
+                    .cap = cap,
+                    .args = null,
+
+                    .bang_tok = bang_tok,
+                };
+                return &node.base;
+            },
+        }
+    }
+
+    fn builtin(self: *Parser, level: u8) anyerror!?*Node {
+        const at_tok = self.eatToken(.At) orelse return null;
+        const cap = try self.ident();
+
+        switch (self.tokens[self.index].kind) {
+            .LParen, .LAngle => {
+                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
+                const node = try self.arena.create(Node.BuiltinCall);
+                node.* = .{
+                    .cap = cap,
+                    .args = args,
+
+                    .at_tok = at_tok,
+                };
+                return &node.base;
+            },
+            else => {
+                const node = try self.arena.create(Node.BuiltinCall);
+                node.* = .{
+                    .cap = cap,
+                    .args = null,
+
+                    .at_tok = at_tok,
+                };
+                return &node.base;
+            },
+        }
+    }
+
+    fn macro(self: *Parser, level: u8) anyerror!?*Node {
+        const percent_tok = self.eatToken(.Percent) orelse return null;
+        const cap = try self.ident();
+
+        switch (self.tokens[self.index].kind) {
+            .LParen, .LAngle => {
+                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
+                const node = try self.arena.create(Node.MacroCall);
+                node.* = .{
+                    .cap = cap,
+                    .args = args,
+
+                    .percent_tok = percent_tok,
+                };
+                return &node.base;
+            },
+            else => {
+                const node = try self.arena.create(Node.MacroCall);
+                node.* = .{
+                    .cap = cap,
+                    .args = null,
+
+                    .percent_tok = percent_tok,
+                };
+                return &node.base;
+            },
+        }
+    }
+
+    fn branch(self: *Parser, level: u8) anyerror!?*Node {
+        const caret_tok = self.eatToken(.Caret) orelse return null;
+        const cap = try self.ident();
+
+        const args = (try self.expr(level)) orelse @panic("expected a tuple");
+
+        const node = try self.arena.create(Node.Branch);
+        node.* = .{
+            .cap = cap,
+            .args = args,
+
+            .caret_tok = caret_tok,
+        };
+        return &node.base;
+    }
+
+    fn math(self: *Parser, level: u8) anyerror!?*Node {
+        if (try self.add(level)) |node| return node;
+        return null;
+    }
+
+    fn add(self: *Parser, level: u8) anyerror!?*Node {
+        const mtok = self.eatToken(.HashAdd) orelse return null;
+        _ = self.eatToken(.LParen) orelse std.debug.panic("expected ( found {}", .{self.tokens[self.index]});
+        const args = try self.tuple(level);
+
+        const node = try self.arena.create(Node.MathAdd);
+        node.* = .{
+            .args = args,
+
+            .mtok = mtok,
         };
         return &node.base;
     }
@@ -386,7 +391,7 @@ pub const Parser = struct {
                     const key = try self.ident();
                     const colon_tok = self.eatToken(.Colon) orelse std.debug.panic("expected : found {}", .{self.tokens[tok]});
                     const value = (try self.expr(level)) orelse @panic("expected value");
-                    const node = try self.arena.create(Node.MapItem);
+                    const node = try self.arena.create(Node.MapEntry);
                     node.* = .{
                         .key = key,
                         .value = value,

@@ -42,6 +42,9 @@ pub const TypedTree = struct {
                 .Decl => try block.ops.append(.{ .Decl = try ttree.transDecl(tree, nn) }),
                 .Set => try block.ops.append(.{ .Set = try ttree.transSet(tree, nn) }),
                 .Call => try block.ops.append(.{ .Call = try ttree.transCall(tree, nn) }),
+                .BuiltinCall => try block.ops.append(.{ .BuiltinCall = try ttree.transBuiltinCall(tree, nn) }),
+                .MacroCall => try block.ops.append(.{ .MacroCall = try ttree.transMacroCall(tree, nn) }),
+                .Branch => try block.ops.append(.{ .Branch = try ttree.transBranch(tree, nn) }),
                 else => @panic("expected an inst node"),
             }
         }
@@ -93,28 +96,77 @@ pub const TypedTree = struct {
 
     fn transCall(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Op.Call {
         const n = @fieldParentPtr(Node.Call, "base", node);
-        const cap = try ttree.transCap(tree, n.cap);
 
-        return Op.Call{
-            .cap = cap,
-        };
+        const cap = try ttree.transCap(tree, n.cap);
+        if (n.args) |a| {
+            const args = try ttree.transTuple(tree, a);
+
+            return Op.Call{
+                .cap = cap,
+
+                .args = args,
+            };
+        } else {
+            return Op.Call{
+                .cap = cap,
+
+                .args = null,
+            };
+        }
     }
 
     fn transBuiltinCall(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Op.BuiltinCall {
         const n = @fieldParentPtr(Node.BuiltinCall, "base", node);
-        const cap = try ttree.transCap(tree, n.cap);
 
-        return Op.BuiltinCall{
-            .cap = cap,
-        };
+        const cap = try ttree.transCap(tree, n.cap);
+        if (n.args) |a| {
+            const args = try ttree.transTuple(tree, a);
+
+            return Op.BuiltinCall{
+                .cap = cap,
+
+                .args = args,
+            };
+        } else {
+            return Op.BuiltinCall{
+                .cap = cap,
+
+                .args = null,
+            };
+        }
     }
 
     fn transMacroCall(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Op.MacroCall {
         const n = @fieldParentPtr(Node.MacroCall, "base", node);
-        const cap = try ttree.transCap(tree, n.cap);
 
-        return Op.MacroCall{
+        const cap = try ttree.transCap(tree, n.cap);
+        if (n.args) |a| {
+            const args = try ttree.transTuple(tree, a);
+
+            return Op.MacroCall{
+                .cap = cap,
+
+                .args = args,
+            };
+        } else {
+            return Op.MacroCall{
+                .cap = cap,
+
+                .args = null,
+            };
+        }
+    }
+
+    fn transBranch(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Op.Branch {
+        const n = @fieldParentPtr(Node.Branch, "base", node);
+
+        const cap = try ttree.transCap(tree, n.cap);
+        const args = try ttree.transTuple(tree, n.args);
+
+        return Op.Branch{
             .cap = cap,
+
+            .args = args,
         };
     }
 
@@ -137,6 +189,34 @@ pub const TypedTree = struct {
             else => @panic("expected ident or scope node for node cap"),
         }
         return cap;
+    }
+
+    fn transTuple(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Tuple {
+        const n = @fieldParentPtr(Node.Tuple, "base", node);
+
+        var items = std.ArrayList(*Expr).init(ttree.arena);
+        for (n.nodes) |i| try items.append(try ttree.transExpr(tree, i));
+
+        return Tuple{
+            .items = items.toOwnedSlice(),
+        };
+    }
+
+    fn transMap(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!Map {
+        const n = @fieldParentPtr(Node.Map, "base", node);
+
+        var entries = std.ArrayList(MapEntry).init(ttree.arena);
+        for (n.nodes) |nod| {
+            const e = @fieldParentPtr(Node.MapEntry, "base", nod);
+            try entries.append(.{
+                .key = tree.getTokSource(@fieldParentPtr(Node.Ident, "base", e.key).tok),
+                .value = try ttree.transExpr(tree, e.value),
+            });
+        }
+
+        return Map{
+            .entries = entries.toOwnedSlice(),
+        };
     }
 
     fn transExpr(ttree: *TypedTree, tree: *const Tree, node: *Node) anyerror!*Expr {
@@ -182,6 +262,16 @@ pub const TypedTree = struct {
                     .Op = .{ .MacroCall = try ttree.transMacroCall(tree, node) },
                 };
             },
+            .Tuple => {
+                expr.* = .{
+                    .Tuple = try ttree.transTuple(tree, node),
+                };
+            },
+            .Map => {
+                expr.* = .{
+                    .Map = try ttree.transMap(tree, node),
+                };
+            },
             .Block => {
                 expr.* = .{
                     .Block = try ttree.transBlock(tree, node),
@@ -225,14 +315,26 @@ pub const Op = union(enum) {
 
     pub const Call = struct {
         cap: *Cap,
+
+        args: ?Tuple,
     };
 
     pub const BuiltinCall = struct {
         cap: *Cap,
+
+        args: ?Tuple,
     };
 
     pub const MacroCall = struct {
         cap: *Cap,
+
+        args: ?Tuple,
+    };
+
+    pub const Branch = struct {
+        cap: *Cap,
+
+        args: Tuple,
     };
 
     Decl: Decl,
@@ -240,18 +342,11 @@ pub const Op = union(enum) {
     Call: Call,
     BuiltinCall: BuiltinCall,
     MacroCall: MacroCall,
+    Branch: Branch,
 
     pub fn render(op: Op, writer: anytype) anyerror!void {
         try writer.print("{}\n", .{op});
     }
-};
-
-pub const Ident = []const u8;
-
-pub const Literal = union(enum) {
-    Integer: i64,
-    Float: f64,
-    String: []const u8,
 };
 
 pub const CapScope = struct {
@@ -264,10 +359,33 @@ pub const Cap = union(enum) {
     Scope: CapScope,
 };
 
+pub const Ident = []const u8;
+
+pub const Literal = union(enum) {
+    Integer: i64,
+    Float: f64,
+    String: []const u8,
+};
+
+pub const Tuple = struct {
+    items: []*Expr,
+};
+
+pub const Map = struct {
+    entries: []MapEntry,
+};
+
+pub const MapEntry = struct {
+    key: Ident,
+    value: *Expr,
+};
+
 pub const Expr = union(enum) {
     Ident: Ident,
     Literal: Literal,
     Op: Op,
+    Tuple: Tuple,
+    Map: Map,
     Block: Block,
     Scope: Scope,
 };
