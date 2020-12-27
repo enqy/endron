@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [ master verilog ]
+    branches: [ master, verilog ]
   pull_request:
-    branches: [ master verilog ]
+    branches: [ master, verilog ]
 jobs:
   build:
     runs-on: ubuntu-latest
