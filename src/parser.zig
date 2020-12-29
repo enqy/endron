@@ -6,7 +6,6 @@ const Token = tk.Token;
 
 const ast = @import("ast.zig");
 const Tree = ast.Tree;
-const Node = ast.Node;
 
 pub fn parse(gpa: *Allocator, source: []const u8) !*Tree {
     const tokens = try tk.tokenize(gpa, source);
@@ -32,13 +31,15 @@ pub fn parse(gpa: *Allocator, source: []const u8) !*Tree {
 
     const tree = try parser.arena.create(Tree);
     tree.* = Tree{
-        .root = root,
-
         .tokens = tokens,
         .source = source,
 
         .arena = arena.state,
         .gpa = gpa,
+
+        .types = std.StringArrayHashMap(ast.Type).init(&arena.allocator),
+
+        .root = root,
     };
     return tree;
 }
@@ -52,335 +53,351 @@ pub const Parser = struct {
 
     index: usize = 0,
 
-    pub fn block(self: *Parser, level: u8) anyerror!*Node {
-        var nodes = std.ArrayList(*Node).init(self.arena);
+    pub fn block(self: *Parser, level: u8) anyerror!ast.Block {
+        var ops = std.ArrayList(ast.Op).init(self.arena);
+        defer ops.deinit();
 
         while (true) {
-            const tok = self.nextToken();
+            const tok = self.peekToken();
             switch (self.tokens[tok].kind) {
-                .RBrace, .Eof => break,
-                else => {
-                    self.index -= 1;
-                    try nodes.append(try self.op(level));
+                .RBrace, .Eof => {
+                    _ = self.nextToken();
+                    break;
                 },
+                else => try ops.append(try self.op(level)),
             }
         }
 
-        const node = try self.arena.create(Node.Block);
-        node.* = .{
-            .nodes = nodes.toOwnedSlice(),
+        return ast.Block{
+            .ops = ops.toOwnedSlice(),
         };
-        return &node.base;
     }
 
-    pub fn op(self: *Parser, level: u8) anyerror!*Node {
-        if (try self.decl(level)) |node| return node;
-        if (try self.set(level)) |node| return node;
-        if (try self.call(level)) |node| return node;
-        if (try self.builtin(level)) |node| return node;
-        if (try self.branch(level)) |node| return node;
-        if (try self.macro(level)) |node| return node;
-        std.debug.panic("invalid op {}", .{self.tokens[self.index]});
+    pub fn op(self: *Parser, level: u8) anyerror!ast.Op {
+        if (try self.decl(level)) |o| return o;
+        if (try self.set(level)) |o| return o;
+        if (try self.call(level)) |o| return o;
+        if (try self.builtin(level)) |o| return o;
+        if (try self.branch(level)) |o| return o;
+        if (try self.macro(level)) |o| return o;
+        std.debug.panic("invalid op {} at {}", .{self.tokens[self.index], self.source[self.tokens[self.index].start..]});
     }
 
-    fn decl(self: *Parser, level: u8) anyerror!?*Node {
-        const dollar_tok = self.eatToken(.Dollar) orelse return null;
-        const cap = try self.ident();
+    fn decl(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.Dollar) orelse return null;
+        const c = try self.cap();
 
-        if (try self.declWithMods(level, dollar_tok, cap)) |node| return node;
-        if (try self.declNoMods(level, dollar_tok, cap)) |node| return node;
+        if (try self.declWithMods(level, first_tok, c)) |o| return o;
+        if (try self.declNoMods(level, first_tok, c)) |o| return o;
         @panic("expected a : or a =");
     }
 
-    fn declWithMods(self: *Parser, level: u8, dollar_tok: usize, cap: *Node) anyerror!?*Node {
-        const colon_tok = self.eatToken(.Colon) orelse return null;
+    fn declWithMods(self: *Parser, level: u8, first_tok: usize, c: *ast.Cap) anyerror!?ast.Op {
+        _ = self.eatToken(.Colon) orelse return null;
 
         const mods = (try self.expr(level)) orelse @panic("expected a expr");
+        const value = if (self.eatToken(.Equal)) |_| (try self.expr(level)) orelse @panic("expected value") else null;
 
-        const eql_tok = self.eatToken(.Equal) orelse null;
-        const value = if (eql_tok) |_| (try self.expr(level)) orelse @panic("expected value") else null;
+        return ast.Op{
+            .Decl = .{
+                .cap = c,
+                .mods = 0,
+                .type_id = 0,
 
-        const node = try self.arena.create(Node.Decl);
-        node.* = .{
-            .cap = cap,
-            .mods = mods,
-            .value = value,
-
-            .dollar_tok = dollar_tok,
-            .colon_tok = colon_tok,
-            .eql_tok = eql_tok,
+                .value = value,
+            },
         };
-        return &node.base;
     }
 
-    fn declNoMods(self: *Parser, level: u8, dollar_tok: usize, cap: *Node) anyerror!?*Node {
-        const eql_tok = self.eatToken(.Equal) orelse return null;
+    fn declNoMods(self: *Parser, level: u8, first_tok: usize, c: *ast.Cap) anyerror!?ast.Op {
+        _ = self.eatToken(.Equal) orelse return null;
 
         const value = (try self.expr(level)) orelse @panic("expected value");
 
-        const node = try self.arena.create(Node.Decl);
-        node.* = .{
-            .cap = cap,
-            .mods = null,
-            .value = value,
+        return ast.Op{
+            .Decl = .{
+                .cap = c,
+                .mods = 0,
+                .type_id = 0,
 
-            .dollar_tok = dollar_tok,
-            .colon_tok = null,
-            .eql_tok = eql_tok,
+                .value = value,
+            },
         };
-        return &node.base;
     }
 
-    fn set(self: *Parser, level: u8) anyerror!?*Node {
-        const tilde_tok = self.eatToken(.Tilde) orelse return null;
-        const cap = try self.ident();
+    fn set(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.Tilde) orelse return null;
+        const c = try self.cap();
 
-        const eql_tok = self.eatToken(.Equal) orelse @panic("expected =");
+        _ = self.eatToken(.Equal) orelse @panic("expected =");
 
         const value = (try self.expr(level)) orelse @panic("expected value");
 
-        const node = try self.arena.create(Node.Set);
-        node.* = .{
-            .cap = cap,
-            .value = value,
+        return ast.Op{
+            .Set = .{
+                .cap = c,
+                .type_id = 0,
 
-            .tilde_tok = tilde_tok,
-            .eql_tok = eql_tok,
+                .value = value,
+            },
         };
-        return &node.base;
     }
 
-    fn call(self: *Parser, level: u8) anyerror!?*Node {
-        const bang_tok = self.eatToken(.Bang) orelse return null;
-        const cap = try self.ident();
+    fn call(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.Bang) orelse return null;
+        const c = try self.cap();
 
         switch (self.tokens[self.index].kind) {
             .LParen, .LAngle => {
-                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.Call);
-                node.* = .{
-                    .cap = cap,
-                    .args = args,
+                _ = self.nextToken();
+                const args = try self.tuple(level);
 
-                    .bang_tok = bang_tok,
+                return ast.Op{
+                    .Call = .{
+                        .cap = c,
+
+                        .args = args,
+                    },
                 };
-                return &node.base;
             },
             else => {
-                const node = try self.arena.create(Node.Call);
-                node.* = .{
-                    .cap = cap,
-                    .args = null,
+                return ast.Op{
+                    .Call = .{
+                        .cap = c,
 
-                    .bang_tok = bang_tok,
+                        .args = null,
+                    },
                 };
-                return &node.base;
             },
         }
     }
 
-    fn builtin(self: *Parser, level: u8) anyerror!?*Node {
-        const at_tok = self.eatToken(.At) orelse return null;
-        const cap = try self.ident();
+    fn builtin(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.At) orelse return null;
+        const c = try self.cap();
 
         switch (self.tokens[self.index].kind) {
             .LParen, .LAngle => {
-                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.BuiltinCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = args,
+                _ = self.nextToken();
+                const args = try self.tuple(level);
 
-                    .at_tok = at_tok,
+                return ast.Op{
+                    .BuiltinCall = .{
+                        .cap = c,
+
+                        .args = args,
+                    },
                 };
-                return &node.base;
             },
             else => {
-                const node = try self.arena.create(Node.BuiltinCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = null,
+                return ast.Op{
+                    .BuiltinCall = .{
+                        .cap = c,
 
-                    .at_tok = at_tok,
+                        .args = null,
+                    },
                 };
-                return &node.base;
             },
         }
     }
 
-    fn macro(self: *Parser, level: u8) anyerror!?*Node {
-        const percent_tok = self.eatToken(.Percent) orelse return null;
-        const cap = try self.ident();
+    fn macro(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.Percent) orelse return null;
+        const c = try self.cap();
 
         switch (self.tokens[self.index].kind) {
             .LParen, .LAngle => {
-                const args = (try self.expr(level)) orelse @panic("expected a map or a tuple");
-                const node = try self.arena.create(Node.MacroCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = args,
+                _ = self.nextToken();
+                const args = try self.tuple(level);
+                return ast.Op{
+                    .MacroCall = .{
+                        .cap = c,
 
-                    .percent_tok = percent_tok,
+                        .args = args,
+                    },
                 };
-                return &node.base;
             },
             else => {
-                const node = try self.arena.create(Node.MacroCall);
-                node.* = .{
-                    .cap = cap,
-                    .args = null,
+                return ast.Op{
+                    .MacroCall = .{
+                        .cap = c,
 
-                    .percent_tok = percent_tok,
+                        .args = null,
+                    },
                 };
-                return &node.base;
             },
         }
     }
 
-    fn branch(self: *Parser, level: u8) anyerror!?*Node {
-        const caret_tok = self.eatToken(.Caret) orelse return null;
-        const cap = try self.ident();
+    fn branch(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.Caret) orelse return null;
+        const c = try self.cap();
 
-        const args = (try self.expr(level)) orelse @panic("expected a tuple");
-
-        const node = try self.arena.create(Node.Branch);
-        node.* = .{
-            .cap = cap,
-            .args = args,
-
-            .caret_tok = caret_tok,
-        };
-        return &node.base;
-    }
-
-    fn math(self: *Parser, level: u8) anyerror!?*Node {
-        if (try self.add(level)) |node| return node;
-        return null;
-    }
-
-    fn add(self: *Parser, level: u8) anyerror!?*Node {
-        const mtok = self.eatToken(.HashAdd) orelse return null;
         _ = self.eatToken(.LParen) orelse std.debug.panic("expected ( found {}", .{self.tokens[self.index]});
         const args = try self.tuple(level);
 
-        const node = try self.arena.create(Node.MathAdd);
-        node.* = .{
-            .args = args,
+        return ast.Op{
+            .Branch = .{
+                .cap = c,
 
-            .mtok = mtok,
+                .args = args,
+            },
         };
-        return &node.base;
     }
 
-    fn expr(self: *Parser, level: u8) anyerror!?*Node {
-        const tok = self.nextToken();
-        const kind = self.tokens[tok].kind;
-        const e = blk: {
-            switch (kind) {
-                .Ident => {
-                    self.index -= 1;
-                    break :blk try self.ident();
-                },
-                .LiteralFloat, .LiteralInteger, .LiteralString => {
-                    const node = try self.arena.create(Node.Literal);
-                    node.* = .{
-                        .tok = tok,
-                    };
-                    break :blk &node.base;
-                },
-                .LParen => break :blk try self.tuple(level + 1),
-                .LAngle => break :blk try self.map(level + 1),
-                .LBrace => break :blk try self.block(level + 1),
-                .At, .Bang, .Percent => {
-                    self.index -= 1;
-                    break :blk try self.op(level);
-                },
-                .HashAdd, .HashSub, .HashMul, .HashDiv => {
-                    self.index -= 1;
-                    break :blk try self.math(level);
-                },
-                else => break :blk null,
-            }
+    fn add(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.HashAdd) orelse return null;
+
+        _ = self.eatToken(.LParen) orelse std.debug.panic("expected ( found {}", .{self.tokens[self.index]});
+        const args = try self.tuple(level);
+
+        return ast.Op{
+            .Add = .{
+                .args = args,
+            },
         };
+    }
+
+    fn sub(self: *Parser, level: u8) anyerror!?ast.Op {
+        const first_tok = self.eatToken(.HashSub) orelse return null;
+
+        _ = self.eatToken(.LParen) orelse std.debug.panic("expected ( found {}", .{self.tokens[self.index]});
+        const args = try self.tuple(level);
+
+        return ast.Op{
+            .Sub = .{
+                .args = args,
+            },
+        };
+    }
+
+    fn expr(self: *Parser, level: u8) anyerror!?*ast.Expr {
+        const e = try self.arena.create(ast.Expr);
+
+        const tok = self.peekToken();
+        switch (self.tokens[tok].kind) {
+            // Literals
+            .LiteralFloat => {
+                _ = self.nextToken();
+                e.* = .{ .Literal = .{ .Float = try std.fmt.parseFloat(f64, self.getTokSource(tok)) } };
+            },
+            .LiteralInteger => {
+                _ = self.nextToken();
+                e.* = .{ .Literal = .{ .Integer = try std.fmt.parseInt(i64, self.getTokSource(tok), 10) } };
+            },
+            .LiteralString => {
+                _ = self.nextToken();
+                e.* = .{ .Literal = .{ .String = self.getTokSource(tok) } };
+            },
+            .Ident => {
+                _ = self.nextToken();
+                e.* = .{ .Ident = self.getTokSource(tok) };
+            },
+            // Groups
+            .LParen => {
+                _ = self.nextToken();
+                e.* = .{ .Tuple = try self.tuple(level + 1) };
+            },
+            .LAngle => {
+                _ = self.nextToken();
+                e.* = .{ .Map = try self.map(level + 1) };
+            },
+            .LBrace => {
+                _ = self.nextToken();
+                e.* = .{ .Block = try self.block(level + 1) };
+            },
+
+            // Ops
+            .At => e.* = .{ .Op = (try self.builtin(level)) orelse unreachable },
+            .Bang => e.* = .{ .Op = (try self.call(level)) orelse unreachable },
+            .Percent => e.* = .{ .Op = (try self.macro(level)) orelse unreachable },
+            .HashAdd => e.* = .{ .Op = (try self.add(level)) orelse unreachable },
+            .HashSub => e.* = .{ .Op = (try self.sub(level)) orelse unreachable },
+
+            else => {
+                self.arena.destroy(e);
+                std.debug.print("{}", .{self.tokens[tok]});
+                return null;
+            },
+        }
+
+        if (self.tokens[tok + 1].kind == .Period) {
+            self.index += 1;
+
+            const s = try self.arena.create(ast.Expr);
+            s.* = .{
+                .Scope = .{
+                    .lhs = e,
+                    .rhs = (try self.expr(level)) orelse @panic("random . at end of expr"),
+                },
+            };
+            return s;
+        }
 
         return e;
     }
 
-    fn ident(self: *Parser) anyerror!*Node {
+    fn cap(self: *Parser) anyerror!*ast.Cap {
+        const c = try self.arena.create(ast.Cap);
+
         const tok = self.nextToken();
-        const kind = self.tokens[tok].kind;
-        switch (kind) {
+        switch (self.tokens[tok].kind) {
             .Ident => {
                 if (self.tokens[tok + 1].kind == .Period) {
-                    const inode = try self.arena.create(Node.Ident);
-                    inode.* = .{
-                        .tok = tok,
+                    const ic = try self.arena.create(ast.Cap);
+                    ic.* = .{ .Ident = self.getTokSource(tok) };
+                    c.* = .{
+                        .Scope = .{
+                            .lhs = ic,
+                            .rhs = try self.cap(),
+                        },
                     };
-                    self.index += 1;
-                    const node = try self.arena.create(Node.Scope);
-                    node.* = .{
-                        .lhs = &inode.base,
-                        .rhs = try self.ident(),
-
-                        .period_tok = tok,
-                    };
-                    return &node.base;
                 } else {
-                    const node = try self.arena.create(Node.Ident);
-                    node.* = .{
-                        .tok = tok,
-                    };
-                    return &node.base;
+                    c.* = .{ .Ident = self.getTokSource(tok) };
                 }
-            },
-            .Underscore => {
-                const node = try self.arena.create(Node.Discard);
-                node.* = .{
-                    .tok = tok,
-                };
-                return &node.base;
             },
             .Period => {
                 const itok = self.eatToken(.Ident) orelse std.debug.panic("expected ident found {}", .{self.tokens[self.index]});
-                const inode = try self.arena.create(Node.Ident);
-                inode.* = .{
-                    .tok = itok,
+                const ic = try self.arena.create(ast.Cap);
+                ic.* = .{ .Ident = self.getTokSource(itok) };
+                c.* = .{
+                    .Scope = .{
+                        .lhs = null,
+                        .rhs = ic,
+                    },
                 };
-                const node = try self.arena.create(Node.Scope);
-                node.* = .{
-                    .lhs = null,
-                    .rhs = &inode.base,
-
-                    .period_tok = tok,
-                };
-                return &node.base;
             },
-            else => std.debug.panic("invalid primary expr {}", .{self.tokens[tok]}),
+            else => std.debug.panic("invalid cap {}", .{self.tokens[tok]}),
         }
+
+        return c;
     }
 
-    fn tuple(self: *Parser, level: u8) anyerror!*Node {
-        var nodes = std.ArrayList(*Node).init(self.arena);
+    fn tuple(self: *Parser, level: u8) anyerror!ast.Tuple {
+        var items = std.ArrayList(*ast.Expr).init(self.arena);
+        defer items.deinit();
+
         while (true) {
             const tok = self.nextToken();
             switch (self.tokens[tok].kind) {
                 .Comma => {},
-                .RAngle, .RParen => break,
+                .RParen => break,
                 else => {
                     self.index -= 1;
-                    try nodes.append((try self.expr(level)) orelse @panic("expected value"));
+                    try items.append((try self.expr(level)) orelse @panic("expected expr for item in tuple"));
                 },
             }
         }
-        const node = try self.arena.create(Node.Tuple);
-        node.* = .{
-            .nodes = nodes.toOwnedSlice(),
+        
+        return ast.Tuple{
+            .items = items.toOwnedSlice(),
         };
-        return &node.base;
     }
 
-    fn map(self: *Parser, level: u8) anyerror!*Node {
-        var nodes = std.ArrayList(*Node).init(self.arena);
+    fn map(self: *Parser, level: u8) anyerror!ast.Map {
+        var entries = std.ArrayList(ast.MapEntry).init(self.arena);
+        defer entries.deinit();
+
         while (true) {
             const tok = self.nextToken();
             switch (self.tokens[tok].kind) {
@@ -388,25 +405,20 @@ pub const Parser = struct {
                 .RAngle => break,
                 else => {
                     self.index -= 1;
-                    const key = try self.ident();
+                    const key = self.getTokSource(self.eatToken(.Ident) orelse std.debug.panic("expected ident found {}", .{self.tokens[tok]}));
                     const colon_tok = self.eatToken(.Colon) orelse std.debug.panic("expected : found {}", .{self.tokens[tok]});
-                    const value = (try self.expr(level)) orelse @panic("expected value");
-                    const node = try self.arena.create(Node.MapEntry);
-                    node.* = .{
+                    const value = (try self.expr(level)) orelse @panic("expected expr for value in map entry");
+                    try entries.append(ast.MapEntry{
                         .key = key,
                         .value = value,
-
-                        .colon_tok = colon_tok,
-                    };
-                    try nodes.append(&node.base);
+                    });
                 },
             }
         }
-        const node = try self.arena.create(Node.Map);
-        node.* = .{
-            .nodes = nodes.toOwnedSlice(),
+
+        return ast.Map{
+            .entries = entries.toOwnedSlice(),
         };
-        return &node.base;
     }
 
     fn eatToken(self: *Parser, kind: Token.Kind) ?usize {
@@ -427,5 +439,16 @@ pub const Parser = struct {
         }
 
         return res;
+    }
+
+    fn peekToken(self: *Parser) usize {
+        const curr_index = self.index;
+        const tok = self.nextToken();
+        self.index = curr_index;
+        return tok;
+    }
+
+    pub fn getTokSource(self: *Parser, tok: usize) []const u8 {
+        return self.source[self.tokens[tok].start..self.tokens[tok].end];
     }
 };

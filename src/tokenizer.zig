@@ -44,8 +44,6 @@ pub const Token = struct {
 
         HashAdd,
         HashSub,
-        HashMul,
-        HashDiv,
     };
 };
 
@@ -277,16 +275,6 @@ pub const Tokenizer = struct {
                     },
                     '-' => {
                         res.kind = .HashSub;
-                        self.index += 1;
-                        break;
-                    },
-                    '*' => {
-                        res.kind = .HashMul;
-                        self.index += 1;
-                        break;
-                    },
-                    '/' => {
-                        res.kind = .HashDiv;
                         self.index += 1;
                         break;
                     },

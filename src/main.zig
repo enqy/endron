@@ -7,7 +7,7 @@ const an = @import("analysis.zig");
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(!gpa.deinit());
+    defer _ = gpa.deinit();
     var allocator = &gpa.allocator;
 
     var arg_it = process.args();
@@ -26,5 +26,5 @@ pub fn main() anyerror!void {
 
     try an.analyze(tree);
 
-    try tree.root.render(std.io.getStdOut().writer(), 0, source, tree.tokens);
+    try tree.root.render(std.io.getStdOut().writer());
 }

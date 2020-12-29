@@ -1,353 +1,260 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const Token = @import("tokenizer.zig").Token;
+const tk = @import("tokenizer.zig");
+const Token = tk.Token;
 
 pub const Tree = struct {
-    root: *Node,
-
     tokens: []const Token,
     source: []const u8,
 
     arena: std.heap.ArenaAllocator.State,
     gpa: *Allocator,
 
+    types: std.StringArrayHashMap(Type),
+
+    root: Block,
+
     pub fn deinit(self: *Tree) void {
+        self.types.deinit();
         self.gpa.free(self.tokens);
         self.arena.promote(self.gpa).deinit();
     }
+};
 
-    pub fn getTokSource(self: *const Tree, tok: usize) []const u8 {
-        return self.source[self.tokens[tok].start..self.tokens[tok].end];
+pub const Block = struct {
+    ops: []Op,
+
+    pub fn render(block: Block, writer: anytype) !void {
+        for (block.ops) |op| try op.render(writer);
     }
 };
 
-pub const Node = struct {
-    kind: Kind,
+pub const Scope = struct {
+    lhs: ?*Expr,
+    rhs: *Expr,
+};
 
-    pub const Kind = enum {
-        // ops
-        Decl,
-        Set,
-        Call,
-        BuiltinCall,
-        MacroCall,
-        Branch,
-        MathAdd,
-        MathSub,
-        MathMul,
-        MathDiv,
-
-        // exprs
-        Ident,
-        Literal,
-        Tuple,
-        Map,
-        MapEntry,
-
-        Discard,
-
-        Scope,
-        Block,
-    };
-
-    // ops
+pub const Op = union(enum) {
     pub const Decl = struct {
-        base: Node = .{ .kind = .Decl },
+        cap: *Cap,
+        mods: u2,
+        type_id: TypeId,
 
-        cap: *Node,
-        mods: ?*Node,
-        value: ?*Node,
-
-        dollar_tok: usize,
-        colon_tok: ?usize,
-        eql_tok: ?usize,
+        value: ?*Expr,
     };
 
     pub const Set = struct {
-        base: Node = .{ .kind = .Set },
+        cap: *Cap,
+        type_id: TypeId,
 
-        cap: *Node,
-        value: *Node,
-
-        tilde_tok: usize,
-        eql_tok: usize,
+        value: *Expr,
     };
 
     pub const Call = struct {
-        base: Node = .{ .kind = .Call },
+        cap: *Cap,
 
-        cap: *Node,
-        args: ?*Node,
-
-        bang_tok: usize,
+        args: ?Tuple,
     };
 
     pub const BuiltinCall = struct {
-        base: Node = .{ .kind = .BuiltinCall },
+        cap: *Cap,
 
-        cap: *Node,
-        args: ?*Node,
-
-        at_tok: usize,
+        args: ?Tuple,
     };
 
     pub const MacroCall = struct {
-        base: Node = .{ .kind = .MacroCall },
+        cap: *Cap,
 
-        cap: *Node,
-        args: ?*Node,
-
-        percent_tok: usize,
+        args: ?Tuple,
     };
 
     pub const Branch = struct {
-        base: Node = .{ .kind = .Branch },
+        cap: *Cap,
 
-        cap: *Node,
-        args: *Node,
-
-        caret_tok: usize,
+        args: Tuple,
     };
 
-    pub const MathAdd = struct {
-        base: Node = .{ .kind = .MathAdd },
-
-        args: *Node,
-
-        mtok: usize,
+    // Binary Ops
+    pub const Add = struct {
+        args: Tuple,
     };
 
-    pub const MathSub = struct {
-        base: Node = .{ .kind = .MathSub },
-
-        args: *Node,
-
-        mtok: usize,
+    pub const Sub = struct {
+        args: Tuple,
     };
 
-    pub const MathMul = struct {
-        base: Node = .{ .kind = .MathMul },
+    // Op union
+    Decl: Decl,
+    Set: Set,
+    Call: Call,
+    BuiltinCall: BuiltinCall,
+    MacroCall: MacroCall,
+    Branch: Branch,
 
-        args: *Node,
+    Add: Add,
+    Sub: Sub,
 
-        mtok: usize,
+    pub fn render(op: Op, writer: anytype) anyerror!void {
+        try writer.print("{}\n", .{op});
+    }
+};
+
+pub const CapScope = struct {
+    lhs: ?*Cap,
+    rhs: *Cap,
+};
+
+pub const Cap = union(enum) {
+    Ident: Ident,
+    Scope: CapScope,
+};
+
+pub const Ident = []const u8;
+
+pub const Literal = union(enum) {
+    Integer: i64,
+    Float: f64,
+    String: []const u8,
+};
+
+pub const Tuple = struct {
+    items: []*Expr,
+};
+
+pub const Map = struct {
+    entries: []MapEntry,
+};
+
+pub const MapEntry = struct {
+    key: Ident,
+    value: *Expr,
+};
+
+pub const Expr = union(enum) {
+    Ident: Ident,
+    Literal: Literal,
+    Op: Op,
+    Tuple: Tuple,
+    Map: Map,
+    Block: Block,
+    Scope: Scope,
+};
+
+pub const ModFlags = enum(u2) {
+    is_pub: 0b01,
+    is_mut: 0b10,
+
+    pub const Map = std.ComptimeStringMap(ModFlags, .{
+        .{ "pub", .is_pub },
+        .{ "mut", .is_mut },
+    });
+};
+
+pub const TypeId = usize;
+
+pub const Type = struct {
+    tag: Tag,
+
+    pub const Tag = enum {
+        void_,
+        u8_,
+        u16_,
+        u32_,
+        u64_,
+        usize_,
+        i8_,
+        i16_,
+        i32_,
+        i64_,
+        isize_,
+        f32_,
+        f64_,
     };
 
-    pub const MathDiv = struct {
-        base: Node = .{ .kind = .MathDiv },
+    pub fn isInteger(self: *Type) !bool {
+        switch (self.tag) {
+            .u8_,
+            .u16_,
+            .u32_,
+            .u64_,
+            .usize_,
+            .i8_,
+            .i16_,
+            .i32_,
+            .i64_,
+            .isize_,
+            => return true,
 
-        args: *Node,
+            .f32_, .f64_ => return false,
 
-        mtok: usize,
-    };
+            .void_ => return false,
+        }
+    }
 
-    // exprs
-    pub const Ident = struct {
-        base: Node = .{ .kind = .Ident },
+    pub fn isUnsignedInt(self: *Type) !bool {
+        switch (self.tag) {
+            .u8_,
+            .u16_,
+            .u32_,
+            .u64_,
+            .usize_,
+            => return true,
 
-        tok: usize,
-    };
+            .i8_,
+            .i16_,
+            .i32_,
+            .i64_,
+            .isize_,
+            => return false,
 
-    pub const Literal = struct {
-        base: Node = .{ .kind = .Literal },
+            .f32_, .f64_ => return false,
 
-        tok: usize,
-    };
+            .void_ => return false,
+        }
+    }
 
-    pub const Tuple = struct {
-        base: Node = .{ .kind = .Tuple },
+    pub fn isSignedInt(self: *Type) !bool {
+        switch (self.tag) {
+            .u8_,
+            .u16_,
+            .u32_,
+            .u64_,
+            .usize_,
+            => return false,
 
-        nodes: []*Node,
-    };
+            .i8_,
+            .i16_,
+            .i32_,
+            .i64_,
+            .isize_,
+            => return true,
 
-    pub const Map = struct {
-        base: Node = .{ .kind = .Map },
+            .f32_, .f64_ => return false,
 
-        nodes: []*Node,
-    };
+            .void_ => return false,
+        }
+    }
 
-    pub const MapEntry = struct {
-        base: Node = .{ .kind = .MapEntry },
+    pub fn isFloat(self: *Type) !bool {
+        switch (self.tag) {
+            .u8_,
+            .u16_,
+            .u32_,
+            .u64_,
+            .usize_,
+            => return false,
 
-        key: *Node,
-        value: *Node,
+            .i8_,
+            .i16_,
+            .i32_,
+            .i64_,
+            .isize_,
+            => return false,
 
-        colon_tok: usize,
-    };
+            .f32_, .f64_ => return true,
 
-    pub const Discard = struct {
-        base: Node = .{ .kind = .Discard },
-
-        tok: usize,
-    };
-
-    pub const Scope = struct {
-        base: Node = .{ .kind = .Scope },
-
-        lhs: ?*Node,
-        rhs: *Node,
-
-        period_tok: usize,
-    };
-
-    pub const Block = struct {
-        base: Node = .{ .kind = .Block },
-
-        nodes: []*Node,
-    };
-
-    pub fn render(node: *Node, writer: anytype, level: u8, source: []const u8, tokens: []const Token) anyerror!void {
-        switch (node.kind) {
-            // ops
-            .Decl => {
-                const n = @fieldParentPtr(Decl, "base", node);
-
-                _ = try writer.writeAll("$");
-                try n.cap.render(writer, level, source, tokens);
-                if (n.mods) |mods| {
-                    _ = try writer.writeAll(": ");
-                    try mods.render(writer, level, source, tokens);
-                }
-                if (n.value) |value| {
-                    _ = try writer.writeAll(" = ");
-                    try value.render(writer, level, source, tokens);
-                }
-            },
-            .Set => {
-                const n = @fieldParentPtr(Set, "base", node);
-
-                _ = try writer.writeAll("~");
-                try n.cap.render(writer, level, source, tokens);
-                _ = try writer.writeAll(" = ");
-                try n.value.render(writer, level, source, tokens);
-            },
-            .Call => {
-                const n = @fieldParentPtr(Call, "base", node);
-
-                _ = try writer.writeAll("!");
-                try n.cap.render(writer, level, source, tokens);
-                if (n.args) |args| try args.render(writer, level, source, tokens);
-            },
-            .BuiltinCall => {
-                const n = @fieldParentPtr(BuiltinCall, "base", node);
-                _ = try writer.writeAll("@");
-                try n.cap.render(writer, level, source, tokens);
-                if (n.args) |args| try args.render(writer, level, source, tokens);
-            },
-            .MacroCall => {
-                const n = @fieldParentPtr(MacroCall, "base", node);
-                _ = try writer.writeAll("%");
-                try n.cap.render(writer, level, source, tokens);
-                if (n.args) |args| try args.render(writer, level, source, tokens);
-            },
-            .Branch => {
-                const n = @fieldParentPtr(Branch, "base", node);
-
-                _ = try writer.writeAll("^");
-                try n.cap.render(writer, level, source, tokens);
-                try n.args.render(writer, level, source, tokens);
-            },
-            .MathAdd => {
-                const n = @fieldParentPtr(MathAdd, "base", node);
-
-                _ = try writer.writeAll("#+");
-                try n.args.render(writer, level, source, tokens);
-            },
-            .MathSub => {
-                const n = @fieldParentPtr(MathSub, "base", node);
-
-                _ = try writer.writeAll("#-");
-                try n.args.render(writer, level, source, tokens);
-            },
-            .MathMul => {
-                const n = @fieldParentPtr(MathMul, "base", node);
-
-                _ = try writer.writeAll("#*");
-                try n.args.render(writer, level, source, tokens);
-            },
-            .MathDiv => {
-                const n = @fieldParentPtr(MathDiv, "base", node);
-
-                _ = try writer.writeAll("#/");
-                try n.args.render(writer, level, source, tokens);
-            },
-
-            // exprs
-            .Ident => {
-                const n = @fieldParentPtr(Ident, "base", node);
-
-                _ = try writer.print("{}", .{source[tokens[n.tok].start..tokens[n.tok].end]});
-            },
-
-            .Literal => {
-                const n = @fieldParentPtr(Literal, "base", node);
-
-                _ = try writer.print("{}", .{source[tokens[n.tok].start..tokens[n.tok].end]});
-            },
-            .Tuple => {
-                const n = @fieldParentPtr(Tuple, "base", node);
-
-                _ = try writer.writeAll("(");
-                for (n.nodes) |expr, j| {
-                    if (j != 0) _ = try writer.writeAll(", ");
-                    try expr.render(writer, level, source, tokens);
-                }
-                _ = try writer.writeAll(")");
-            },
-            .Map => {
-                const n = @fieldParentPtr(Map, "base", node);
-
-                _ = try writer.writeAll("<");
-                for (n.nodes) |expr, j| {
-                    if (j != 0) _ = try writer.writeAll(", ");
-                    try expr.render(writer, level, source, tokens);
-                }
-                _ = try writer.writeAll(">");
-            },
-            .MapEntry => {
-                const n = @fieldParentPtr(MapEntry, "base", node);
-
-                try n.key.render(writer, level, source, tokens);
-                _ = try writer.writeAll(":");
-                try n.value.render(writer, level, source, tokens);
-            },
-
-            .Discard => {
-                _ = try writer.writeAll("_");
-            },
-
-            .Scope => {
-                const n = @fieldParentPtr(Scope, "base", node);
-
-                if (n.lhs) |lhs| {
-                    try lhs.render(writer, level, source, tokens);
-                }
-                _ = try writer.writeAll(".");
-                try n.rhs.render(writer, level, source, tokens);
-            },
-            .Block => {
-                const n = @fieldParentPtr(Block, "base", node);
-
-                if (level != 0) {
-                    if (n.nodes.len == 0) {
-                        _ = try writer.writeAll("{");
-                    } else {
-                        _ = try writer.writeAll("{\n");
-                    }
-                }
-                for (n.nodes) |nod| {
-                    var i: u8 = 0;
-                    while (i < level) : (i += 1) _ = try writer.writeAll("  ");
-                    try nod.render(writer, level + 1, source, tokens);
-                    _ = try writer.writeAll("\n");
-                }
-                if (level != 0) {
-                    var i: u8 = 0;
-                    while (i + 1 < level) : (i += 1) _ = try writer.writeAll("  ");
-                    _ = try writer.writeAll("}");
-                }
-            },
+            .void_ => return false,
         }
     }
 };
