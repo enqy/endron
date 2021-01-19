@@ -2,25 +2,26 @@ $x: u32 = 9
 $y: u32 = 2
 
 $z = 1
+$v: @array(u32, 4) = [1, 2, 3, 4]
 
 // This is just a test comment
 /// This is just a test doc comment
-$AddData = @struct(<T:type>, {
+$AddData: @struct(<T:type>) = {
     $.x: T
     $.y: T
 
-    $add: pub = @fn(<self:AddData>, T, {
+    $add: (pub, @fn(<self:AddData>, T)) = {
         $ix = self.x
 
         ^ret(#+(ix, self.y))
-    })
-})
+    }
+}
 
-$w = !AddData((u32), {
+$w: !AddData((u32)) = {
     ~.x = 2
     ~.y = 3
-})
+}
 
-$main = @fn(<>, void, {
-    !print("{}\n", (!w.add))
-})
+$main: @fn(<>, void) = {
+    $sum = !w.add
+}

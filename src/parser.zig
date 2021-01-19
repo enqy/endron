@@ -80,7 +80,7 @@ pub const Parser = struct {
         if (try self.builtin(level)) |o| return o;
         if (try self.branch(level)) |o| return o;
         if (try self.macro(level)) |o| return o;
-        std.debug.panic("invalid op {} at {}", .{self.tokens[self.index], self.source[self.tokens[self.index].start..]});
+        std.debug.panic("invalid op {}", .{self.tokens[self.index]});
     }
 
     fn decl(self: *Parser, level: u8) anyerror!?ast.Op {
@@ -101,7 +101,7 @@ pub const Parser = struct {
         return ast.Op{
             .Decl = .{
                 .cap = c,
-                .mods = 0,
+                .mods = mods,
                 .type_id = 0,
 
                 .value = value,
@@ -117,7 +117,7 @@ pub const Parser = struct {
         return ast.Op{
             .Decl = .{
                 .cap = c,
-                .mods = 0,
+                .mods = null,
                 .type_id = 0,
 
                 .value = value,
@@ -306,6 +306,10 @@ pub const Parser = struct {
                 _ = self.nextToken();
                 e.* = .{ .Block = try self.block(level + 1) };
             },
+            .LBracket => {
+                _ = self.nextToken();
+                e.* = .{ .Array = try self.array(level + 1) };
+            },
 
             // Ops
             .At => e.* = .{ .Op = (try self.builtin(level)) orelse unreachable },
@@ -316,7 +320,6 @@ pub const Parser = struct {
 
             else => {
                 self.arena.destroy(e);
-                std.debug.print("{}", .{self.tokens[tok]});
                 return null;
             },
         }
@@ -371,6 +374,27 @@ pub const Parser = struct {
         }
 
         return c;
+    }
+
+    fn array(self: *Parser, level: u8) anyerror!ast.Array {
+        var items = std.ArrayList(*ast.Expr).init(self.arena);
+        defer items.deinit();
+
+        while (true) {
+            const tok = self.nextToken();
+            switch (self.tokens[tok].kind) {
+                .Comma => {},
+                .RBracket => break,
+                else => {
+                    self.index -= 1;
+                    try items.append((try self.expr(level)) orelse @panic("expected expr for item in tuple"));
+                },
+            }
+        }
+        
+        return ast.Array{
+            .items = items.toOwnedSlice(),
+        };
     }
 
     fn tuple(self: *Parser, level: u8) anyerror!ast.Tuple {

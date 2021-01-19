@@ -38,7 +38,7 @@ pub const Scope = struct {
 pub const Op = union(enum) {
     pub const Decl = struct {
         cap: *Cap,
-        mods: u2,
+        mods: ?*Expr,
         type_id: TypeId,
 
         value: ?*Expr,
@@ -118,6 +118,10 @@ pub const Literal = union(enum) {
     String: []const u8,
 };
 
+pub const Array = struct {
+    items: []*Expr,
+};
+
 pub const Tuple = struct {
     items: []*Expr,
 };
@@ -135,6 +139,7 @@ pub const Expr = union(enum) {
     Ident: Ident,
     Literal: Literal,
     Op: Op,
+    Array: Array,
     Tuple: Tuple,
     Map: Map,
     Block: Block,
