@@ -111,21 +111,11 @@ pub const Tokenizer = struct {
                         state = .Ident;
                         res.kind = .Ident;
                     },
-                    '0' => {
-                        state = .Zero;
-                    },
-                    '1'...'9' => {
-                        state = .Integer;
-                    },
-                    '=' => {
-                        state = .Equal;
-                    },
-                    '#' => {
-                        state = .Hash;
-                    },
-                    '/' => {
-                        state = .Slash;
-                    },
+                    '0' => state = .Zero,
+                    '1'...'9' => state = .Integer,
+                    '=' => state = .Equal,
+                    '#' => state = .Hash,
+                    '/' => state = .Slash,
                     '$' => {
                         res.kind = .Dollar;
                         self.index += 1;
@@ -236,12 +226,8 @@ pub const Tokenizer = struct {
                     },
                 },
                 .Zero => switch (c) {
-                    '.' => {
-                        state = .Float;
-                    },
-                    '0'...'9' => {
-                        state = .Integer;
-                    },
+                    '.' => state = .Float,
+                    '0'...'9' => state = .Integer,
                     else => {
                         res.kind = .LiteralInteger;
                         break;
@@ -249,6 +235,7 @@ pub const Tokenizer = struct {
                 },
                 .Integer => switch (c) {
                     '0'...'9' => {},
+                    '.' => state = .Float,
                     else => {
                         res.kind = .LiteralInteger;
                         break;
