@@ -38,15 +38,15 @@ pub const Scope = struct {
 pub const Op = union(enum) {
     pub const Decl = struct {
         cap: *Cap,
-        mods: ?*Expr,
-        type_id: TypeId,
+        mods: *Expr,
 
         value: ?*Expr,
+
+        type_id: usize = 0,
     };
 
     pub const Set = struct {
         cap: *Cap,
-        type_id: TypeId,
 
         value: *Expr,
     };
@@ -135,15 +135,18 @@ pub const MapEntry = struct {
     value: *Expr,
 };
 
-pub const Expr = union(enum) {
-    Ident: Ident,
-    Literal: Literal,
-    Op: Op,
-    Array: Array,
-    Tuple: Tuple,
-    Map: Map,
-    Block: Block,
-    Scope: Scope,
+pub const Expr = struct{
+    expr: union(enum) {
+        Ident: Ident,
+        Literal: Literal,
+        Op: Op,
+        Array: Array,
+        Tuple: Tuple,
+        Map: Map,
+        Block: Block,
+        Scope: Scope,
+    },
+    type_id: usize = 0,
 };
 
 pub const ModFlags = enum(u2) {
@@ -156,12 +159,12 @@ pub const ModFlags = enum(u2) {
     });
 };
 
-pub const TypeId = usize;
-
 pub const Type = struct {
-    tag: Tag,
+    tag: Tag = .invalid_,
+    payload: Payload = .{ .None = {} },
 
     pub const Tag = enum {
+        invalid_,
         void_,
         u8_,
         u16_,
@@ -175,9 +178,22 @@ pub const Type = struct {
         isize_,
         f32_,
         f64_,
+        str_,
+
+        // has payload
+        fn_,
+        struct_,
     };
 
-    pub fn isInteger(self: *Type) !bool {
+    pub const Payload = union(enum) {
+        None: void,
+        Fn: struct {
+            ret_type_id: usize,
+        },
+        Struct: struct {},
+    };
+
+    pub fn isInteger(self: *Type) bool {
         switch (self.tag) {
             .u8_,
             .u16_,
@@ -190,14 +206,11 @@ pub const Type = struct {
             .i64_,
             .isize_,
             => return true,
-
-            .f32_, .f64_ => return false,
-
-            .void_ => return false,
+            else => return false,
         }
     }
 
-    pub fn isUnsignedInt(self: *Type) !bool {
+    pub fn isUnsignedInt(self: *Type) bool {
         switch (self.tag) {
             .u8_,
             .u16_,
@@ -205,61 +218,40 @@ pub const Type = struct {
             .u64_,
             .usize_,
             => return true,
-
-            .i8_,
-            .i16_,
-            .i32_,
-            .i64_,
-            .isize_,
-            => return false,
-
-            .f32_, .f64_ => return false,
-
-            .void_ => return false,
+            else => return false,
         }
     }
 
-    pub fn isSignedInt(self: *Type) !bool {
+    pub fn isSignedInt(self: *Type) bool {
         switch (self.tag) {
-            .u8_,
-            .u16_,
-            .u32_,
-            .u64_,
-            .usize_,
-            => return false,
-
             .i8_,
             .i16_,
             .i32_,
             .i64_,
             .isize_,
             => return true,
-
-            .f32_, .f64_ => return false,
-
-            .void_ => return false,
+            else => return false,
         }
     }
 
-    pub fn isFloat(self: *Type) !bool {
+    pub fn isFloat(self: *Type) bool {
         switch (self.tag) {
-            .u8_,
-            .u16_,
-            .u32_,
-            .u64_,
-            .usize_,
-            => return false,
-
-            .i8_,
-            .i16_,
-            .i32_,
-            .i64_,
-            .isize_,
-            => return false,
-
             .f32_, .f64_ => return true,
+            else => return false,
+        }
+    }
 
-            .void_ => return false,
+    pub fn isArray(self: *Type) bool {
+        switch (self.tag) {
+            .str_ => return true,
+            else => return false,
+        }
+    }
+
+    pub fn isFn(self: *Type) bool {
+        switch (self.tag) {
+            .fn_ => return true,
+            else => return false,
         }
     }
 };

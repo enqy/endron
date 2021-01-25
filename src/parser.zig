@@ -37,7 +37,7 @@ pub fn parse(gpa: *Allocator, source: []const u8) !*Tree {
         .arena = arena.state,
         .gpa = gpa,
 
-        .types = std.StringArrayHashMap(ast.Type).init(&arena.allocator),
+        .types = std.StringArrayHashMap(ast.Type).init(gpa),
 
         .root = root,
     };
@@ -87,13 +87,7 @@ pub const Parser = struct {
         const first_tok = self.eatToken(.Dollar) orelse return null;
         const c = try self.cap();
 
-        if (try self.declWithMods(level, first_tok, c)) |o| return o;
-        if (try self.declNoMods(level, first_tok, c)) |o| return o;
-        @panic("expected a : or a =");
-    }
-
-    fn declWithMods(self: *Parser, level: u8, first_tok: usize, c: *ast.Cap) anyerror!?ast.Op {
-        _ = self.eatToken(.Colon) orelse return null;
+        _ = self.eatToken(.Colon) orelse @panic("expected a :");
 
         const mods = (try self.expr(level)) orelse @panic("expected a expr");
         const value = if (self.eatToken(.Equal)) |_| (try self.expr(level)) orelse @panic("expected value") else null;
@@ -102,23 +96,6 @@ pub const Parser = struct {
             .Decl = .{
                 .cap = c,
                 .mods = mods,
-                .type_id = 0,
-
-                .value = value,
-            },
-        };
-    }
-
-    fn declNoMods(self: *Parser, level: u8, first_tok: usize, c: *ast.Cap) anyerror!?ast.Op {
-        _ = self.eatToken(.Equal) orelse return null;
-
-        const value = (try self.expr(level)) orelse @panic("expected value");
-
-        return ast.Op{
-            .Decl = .{
-                .cap = c,
-                .mods = null,
-                .type_id = 0,
 
                 .value = value,
             },
@@ -136,7 +113,6 @@ pub const Parser = struct {
         return ast.Op{
             .Set = .{
                 .cap = c,
-                .type_id = 0,
 
                 .value = value,
             },
@@ -279,44 +255,44 @@ pub const Parser = struct {
             // Literals
             .LiteralFloat => {
                 _ = self.nextToken();
-                e.* = .{ .Literal = .{ .Float = try std.fmt.parseFloat(f64, self.getTokSource(tok)) } };
+                e.* = .{ .expr = .{ .Literal = .{ .Float = try std.fmt.parseFloat(f64, self.getTokSource(tok)) } } };
             },
             .LiteralInteger => {
                 _ = self.nextToken();
-                e.* = .{ .Literal = .{ .Integer = try std.fmt.parseInt(i64, self.getTokSource(tok), 10) } };
+                e.* = .{ .expr = .{ .Literal = .{ .Integer = try std.fmt.parseInt(i64, self.getTokSource(tok), 10) } } };
             },
             .LiteralString => {
                 _ = self.nextToken();
-                e.* = .{ .Literal = .{ .String = self.getTokSource(tok) } };
+                e.* = .{ .expr = .{ .Literal = .{ .String = self.getTokSource(tok) } } };
             },
             .Ident => {
                 _ = self.nextToken();
-                e.* = .{ .Ident = self.getTokSource(tok) };
+                e.* = .{ .expr = .{ .Ident = self.getTokSource(tok) } };
             },
             // Groups
             .LParen => {
                 _ = self.nextToken();
-                e.* = .{ .Tuple = try self.tuple(level + 1) };
+                e.* = .{ .expr = .{ .Tuple = try self.tuple(level + 1) } };
             },
             .LAngle => {
                 _ = self.nextToken();
-                e.* = .{ .Map = try self.map(level + 1) };
+                e.* = .{ .expr = .{ .Map = try self.map(level + 1) } };
             },
             .LBrace => {
                 _ = self.nextToken();
-                e.* = .{ .Block = try self.block(level + 1) };
+                e.* = .{ .expr = .{ .Block = try self.block(level + 1) } };
             },
             .LBracket => {
                 _ = self.nextToken();
-                e.* = .{ .Array = try self.array(level + 1) };
+                e.* = .{ .expr = .{ .Array = try self.array(level + 1) } };
             },
 
             // Ops
-            .At => e.* = .{ .Op = (try self.builtin(level)) orelse unreachable },
-            .Bang => e.* = .{ .Op = (try self.call(level)) orelse unreachable },
-            .Percent => e.* = .{ .Op = (try self.macro(level)) orelse unreachable },
-            .HashAdd => e.* = .{ .Op = (try self.add(level)) orelse unreachable },
-            .HashSub => e.* = .{ .Op = (try self.sub(level)) orelse unreachable },
+            .At => e.* = .{ .expr = .{ .Op = (try self.builtin(level)) orelse unreachable } },
+            .Bang => e.* = .{ .expr = .{ .Op = (try self.call(level)) orelse unreachable } },
+            .Percent => e.* = .{ .expr = .{ .Op = (try self.macro(level)) orelse unreachable } },
+            .HashAdd => e.* = .{ .expr = .{ .Op = (try self.add(level)) orelse unreachable } },
+            .HashSub => e.* = .{ .expr = .{ .Op = (try self.sub(level)) orelse unreachable } },
 
             else => {
                 self.arena.destroy(e);
@@ -328,12 +304,12 @@ pub const Parser = struct {
             self.index += 1;
 
             const s = try self.arena.create(ast.Expr);
-            s.* = .{
+            s.* = .{ .expr = .{
                 .Scope = .{
                     .lhs = e,
                     .rhs = (try self.expr(level)) orelse @panic("random . at end of expr"),
                 },
-            };
+            }};
             return s;
         }
 

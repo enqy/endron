@@ -7,6 +7,7 @@ const Tree = ast.Tree;
 const Pass = fn (*Allocator, *Tree) anyerror!void;
 const Passes = [_]Pass{
     @import("analysis/0_typing.zig").pass,
+    @import("analysis/1_builtin_types.zig").pass,
 };
 
 pub fn analyze(tree: *Tree) !void {

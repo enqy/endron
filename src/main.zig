@@ -27,7 +27,7 @@ pub fn main() anyerror!void {
 
     try an.analyze(tree);
 
-    const output = try gn.generate(tree, .endron);
+    const output = try gn.generate(tree, .c);
     defer tree.gpa.free(output);
     try std.io.getStdOut().writeAll(output);
 }

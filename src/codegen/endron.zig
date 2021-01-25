@@ -15,9 +15,11 @@ pub fn generate(alloc: *Allocator, tree: *Tree) anyerror![]const u8 {
 }
 
 fn genBlock(writer: anytype, level: u8, block: ast.Block) anyerror!void {
-    if (level != 0) try writer.writeAll("{\n");
+    if (level != 0) try writer.writeAll("{");
 
-    for (block.ops) |op| {
+    for (block.ops) |op, j| {
+        if (j == 0 and level != 0) try writer.writeByte('\n');
+
         var i: u8 = 0;
         while (i < level) : (i += 1) try writer.writeAll("  ");
 
@@ -38,10 +40,10 @@ fn genOp(writer: anytype, level: u8, op: ast.Op) anyerror!void {
         .Set => try genSet(writer, level, op.Set),
         .Call => try genCall(writer, level, op.Call),
         .BuiltinCall => try genBuiltinCall(writer, level, op.BuiltinCall),
+        .MacroCall => try genMacroCall(writer, level, op.MacroCall),
         .Branch => try genBranch(writer, level, op.Branch),
         .Add => try genAdd(writer, level, op.Add),
         .Sub => try genSub(writer, level, op.Sub),
-        else => {},
     }
 }
 
@@ -50,10 +52,8 @@ fn genDecl(writer: anytype, level: u8, decl: ast.Op.Decl) anyerror!void {
 
     try genCap(writer, level, decl.cap);
 
-    if (decl.mods) |mods| {
-        try writer.writeAll(": ");
-        try genExpr(writer, level, mods);
-    }
+    try writer.writeAll(": ");
+    try genExpr(writer, level, decl.mods);
 
     if (decl.value) |value| {
         try writer.writeAll(" = ");
@@ -80,6 +80,14 @@ fn genCall(writer: anytype, level: u8, call: ast.Op.Call) anyerror!void {
 
 fn genBuiltinCall(writer: anytype, level: u8, call: ast.Op.BuiltinCall) anyerror!void {
     try writer.writeByte('@');
+
+    try genCap(writer, level, call.cap);
+
+    if (call.args) |args| try genTuple(writer, level, args);
+}
+
+fn genMacroCall(writer: anytype, level: u8, call: ast.Op.MacroCall) anyerror!void {
+    try writer.writeByte('%');
 
     try genCap(writer, level, call.cap);
 
@@ -142,24 +150,24 @@ fn genMap(writer: anytype, level: u8, map: ast.Map) anyerror!void {
 }
 
 fn genExpr(writer: anytype, level: u8, expr: *ast.Expr) anyerror!void {
-    switch (expr.*) {
+    switch (expr.expr) {
         .Literal => {
-            switch (expr.Literal) {
-                .Integer => try writer.print("{}", .{expr.Literal.Integer}),
-                .Float => try writer.print("{d}", .{expr.Literal.Float}),
-                .String => try writer.writeAll(expr.Literal.String),
+            switch (expr.expr.Literal) {
+                .Integer => try writer.print("{}", .{expr.expr.Literal.Integer}),
+                .Float => try writer.print("{d}", .{expr.expr.Literal.Float}),
+                .String => try writer.writeAll(expr.expr.Literal.String),
             }
         },
-        .Ident => try writer.writeAll(expr.Ident),
-        .Op => try genOp(writer, level, expr.Op),
-        .Array => try genArray(writer, level, expr.Array),
-        .Tuple => try genTuple(writer, level, expr.Tuple),
-        .Map => try genMap(writer, level, expr.Map),
-        .Block => try genBlock(writer, level + 1, expr.Block),
+        .Ident => try writer.writeAll(expr.expr.Ident),
+        .Op => try genOp(writer, level, expr.expr.Op),
+        .Array => try genArray(writer, level, expr.expr.Array),
+        .Tuple => try genTuple(writer, level, expr.expr.Tuple),
+        .Map => try genMap(writer, level, expr.expr.Map),
+        .Block => try genBlock(writer, level + 1, expr.expr.Block),
         .Scope => {
-            if (expr.Scope.lhs) |lhs| if (lhs.* != .Scope) try genExpr(writer, level, lhs) else unreachable;
+            if (expr.expr.Scope.lhs) |lhs| if (lhs.expr != .Scope) try genExpr(writer, level, lhs) else unreachable;
             try writer.writeByte('.');
-            try genExpr(writer, level, expr.Scope.rhs);
+            try genExpr(writer, level, expr.expr.Scope.rhs);
         },
     }
 }

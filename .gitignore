@@ -26,3 +26,5 @@ docgen_tmp/
 
 build_runner.zig
 
+a.out
+test.c
