@@ -4,7 +4,6 @@ const mem = std.mem;
 
 const pa = @import("parser.zig");
 const an = @import("analysis.zig");
-const gn = @import("codegen.zig");
 
 pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -25,9 +24,6 @@ pub fn main() anyerror!void {
     var tree = try pa.parse(allocator, source);
     defer tree.deinit();
 
-    try an.analyze(tree);
-
-    const output = try gn.generate(tree, .endron);
-    defer tree.gpa.free(output);
-    try std.io.getStdOut().writeAll(output);
+    const out = std.io.getStdOut();
+    try tree.root.render(out.writer());
 }

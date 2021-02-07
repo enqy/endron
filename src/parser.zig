@@ -74,8 +74,7 @@ pub const Parser = struct {
     }
 
     pub fn op(self: *Parser, level: u8) anyerror!ast.Op {
-        if (try self.decl(level)) |o| return o;
-        if (try self.set(level)) |o| return o;
+        if (try self.write(level)) |o| return o;
         if (try self.call(level)) |o| return o;
         if (try self.builtin(level)) |o| return o;
         if (try self.branch(level)) |o| return o;
@@ -83,36 +82,19 @@ pub const Parser = struct {
         std.debug.panic("invalid op {}", .{self.tokens[self.index]});
     }
 
-    fn decl(self: *Parser, level: u8) anyerror!?ast.Op {
+    fn write(self: *Parser, level: u8) anyerror!?ast.Op {
         const first_tok = self.eatToken(.Dollar) orelse return null;
         const c = try self.cap();
 
         _ = self.eatToken(.Colon) orelse @panic("expected a :");
 
-        const mods = (try self.expr(level)) orelse @panic("expected a expr");
+        const wtype = (try self.expr(level)) orelse @panic("expected a type");
         const value = if (self.eatToken(.Equal)) |_| (try self.expr(level)) orelse @panic("expected value") else null;
 
         return ast.Op{
-            .Decl = .{
+            .Write = .{
                 .cap = c,
-                .mods = mods,
-
-                .value = value,
-            },
-        };
-    }
-
-    fn set(self: *Parser, level: u8) anyerror!?ast.Op {
-        const first_tok = self.eatToken(.Tilde) orelse return null;
-        const c = try self.cap();
-
-        _ = self.eatToken(.Equal) orelse @panic("expected =");
-
-        const value = (try self.expr(level)) orelse @panic("expected value");
-
-        return ast.Op{
-            .Set = .{
-                .cap = c,
+                .wtype = wtype,
 
                 .value = value,
             },

@@ -36,16 +36,11 @@ pub const Scope = struct {
 };
 
 pub const Op = union(enum) {
-    pub const Decl = struct {
+    pub const Write = struct {
         cap: *Cap,
+        wtype: *Expr,
 
         value: ?*Expr,
-    };
-
-    pub const Set = struct {
-        cap: *Cap,
-
-        value: *Expr,
     };
 
     pub const Call = struct {
@@ -82,8 +77,7 @@ pub const Op = union(enum) {
     };
 
     // Op union
-    Decl: Decl,
-    Set: Set,
+    Write: Write,
     Call: Call,
     BuiltinCall: BuiltinCall,
     MacroCall: MacroCall,
