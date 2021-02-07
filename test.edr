@@ -1,7 +1,7 @@
 $x: u32 = 9
 $y: u32 = 2
 
-$z = 1
+$z: f32 = 1
 $v: @array(u32, 4) = [1, 2, 3, 4]
 
 // This is just a test comment
@@ -11,7 +11,7 @@ $AddData: @struct(<T:type>) = {
     $.y: T
 
     $add: (pub, @fn(<self:AddData>, T)) = {
-        $ix = self.x
+        $ix: T = self.x
 
         ^ret(#+(ix, self.y))
     }
@@ -23,5 +23,5 @@ $w: !AddData((u32)) = {
 }
 
 $main: @fn(<>, void) = {
-    $sum = !w.add
+    $sum: w.T = !w.add
 }

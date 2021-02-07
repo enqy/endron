@@ -6,8 +6,6 @@ const Tree = ast.Tree;
 
 const Target = enum {
     endron,
-    verilog,
-    c,
 };
 
 pub fn generate(tree: *Tree, target: Target) ![]const u8 {
@@ -16,7 +14,5 @@ pub fn generate(tree: *Tree, target: Target) ![]const u8 {
 
     switch (target) {
         .endron => return @import("codegen/endron.zig").generate(&arena.allocator, tree),
-        .verilog => return @import("codegen/verilog.zig").generate(&arena.allocator, tree),
-        .c => return @import("codegen/c.zig").generate(&arena.allocator, tree),
     }
 }

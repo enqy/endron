@@ -38,11 +38,8 @@ pub const Scope = struct {
 pub const Op = union(enum) {
     pub const Decl = struct {
         cap: *Cap,
-        mods: *Expr,
 
         value: ?*Expr,
-
-        type_id: usize = 0,
     };
 
     pub const Set = struct {
@@ -146,17 +143,6 @@ pub const Expr = struct{
         Block: Block,
         Scope: Scope,
     },
-    type_id: usize = 0,
-};
-
-pub const ModFlags = enum(u2) {
-    is_pub: 0b01,
-    is_mut: 0b10,
-
-    pub const Map = std.ComptimeStringMap(ModFlags, .{
-        .{ "pub", .is_pub },
-        .{ "mut", .is_mut },
-    });
 };
 
 pub const Type = struct {
