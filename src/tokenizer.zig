@@ -336,7 +336,7 @@ test "symbols" {
     expectTokens(
         \\! ~ $ @ % ^
         \\& *
-        \\#+ #- #* #/
+        \\#+ #-
         \\( ) { } < > [ ]
         \\=
         \\, . | : _
@@ -351,8 +351,6 @@ test "symbols" {
         .Asterisk,
         .HashAdd,
         .HashSub,
-        .HashMul,
-        .HashDiv,
         .LParen,
         .RParen,
         .LBrace,
