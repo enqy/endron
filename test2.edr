@@ -1,6 +1,0 @@
-$x: (mut, u8) = 2
-$y: f32 = 0.939
-$z: str = "test"
-
-$vc: @fn(<op1: u32, op2: i8>, f32) = {}
-~x = !vc(%nummacro, 0)

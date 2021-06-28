@@ -117,15 +117,6 @@ pub const Tuple = struct {
     items: []*Expr,
 };
 
-pub const Map = struct {
-    entries: []MapEntry,
-};
-
-pub const MapEntry = struct {
-    key: Ident,
-    value: *Expr,
-};
-
 pub const Expr = struct{
     expr: union(enum) {
         Ident: Ident,
@@ -133,7 +124,6 @@ pub const Expr = struct{
         Op: Op,
         Array: Array,
         Tuple: Tuple,
-        Map: Map,
         Block: Block,
         Scope: Scope,
     },

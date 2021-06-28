@@ -1,27 +1,42 @@
-$x:u32 = 9
-$y:u32 = 2
+=x: 9
+=y: 2
 
-$z:f32 = 1
-$v:@array(u32, 4) = [1, 2, 3, 4]
+$z<f32> : 1
+$v<array<u32>> : [1, 2, 3, 4]
+
+
+$testfn<fn<
+    $.arg<f32>
+    ~T
+>> : {
+    ~.arg
+}
 
 // This is just a test comment
 /// This is just a test doc comment
-$AddData:@struct(<T:type>) = {
-    $.x:T
-    $.y:T
+$AddData<struct<
+    $.T<type>
+>> : {
+    $.x<T>
+    $.y<T>
 
-    $add: (pub, @fn(<self:AddData>, T)) = {
-        $ix:T = self.x
+    $add<fn<
+        $.self<AddData>
+        ~T
+    >> : {
+        $ix<T> : .self.x
 
-        ^ret(#+(ix, self.y))
+        #+ ix : .self.y
     }
 }
 
-$w:!AddData((u32)) = {
-    $.x:u32 = 2
-    $.y:u32 = 3
+$w<AddData<
+    $.T : u32
+>> : {
+    $.x : 2
+    $.y : 3
 }
 
-$main:@fn(<>, void) = {
-    $sum:w.T = !w.add
+$main<fn> : {
+    $sum<w.T> : !w.add
 }

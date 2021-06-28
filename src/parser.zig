@@ -85,10 +85,10 @@ pub const Parser = struct {
     fn write(self: *Parser, level: u8) anyerror!?ast.Op {
         const first_tok = self.eatToken(.Dollar) orelse return null;
         const c = try self.cap();
+        const wtype = (try self.expr(level)) orelse @panic("expected a type");
 
         _ = self.eatToken(.Colon) orelse @panic("expected a :");
 
-        const wtype = (try self.expr(level)) orelse @panic("expected a type");
         const value = if (self.eatToken(.Equal)) |_| (try self.expr(level)) orelse @panic("expected value") else null;
 
         return ast.Op{
@@ -256,10 +256,6 @@ pub const Parser = struct {
                 _ = self.nextToken();
                 e.* = .{ .expr = .{ .Tuple = try self.tuple(level + 1) } };
             },
-            .LAngle => {
-                _ = self.nextToken();
-                e.* = .{ .expr = .{ .Map = try self.map(level + 1) } };
-            },
             .LBrace => {
                 _ = self.nextToken();
                 e.* = .{ .expr = .{ .Block = try self.block(level + 1) } };
@@ -373,33 +369,6 @@ pub const Parser = struct {
         
         return ast.Tuple{
             .items = items.toOwnedSlice(),
-        };
-    }
-
-    fn map(self: *Parser, level: u8) anyerror!ast.Map {
-        var entries = std.ArrayList(ast.MapEntry).init(self.arena);
-        defer entries.deinit();
-
-        while (true) {
-            const tok = self.nextToken();
-            switch (self.tokens[tok].kind) {
-                .Comma => {},
-                .RAngle => break,
-                else => {
-                    self.index -= 1;
-                    const key = self.getTokSource(self.eatToken(.Ident) orelse std.debug.panic("expected ident found {}", .{self.tokens[tok]}));
-                    const colon_tok = self.eatToken(.Colon) orelse std.debug.panic("expected : found {}", .{self.tokens[tok]});
-                    const value = (try self.expr(level)) orelse @panic("expected expr for value in map entry");
-                    try entries.append(ast.MapEntry{
-                        .key = key,
-                        .value = value,
-                    });
-                },
-            }
-        }
-
-        return ast.Map{
-            .entries = entries.toOwnedSlice(),
         };
     }
 

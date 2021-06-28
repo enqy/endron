@@ -3,12 +3,7 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=zig,visualstudiocode
 
 ### VisualStudioCode ###
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-*.code-workspace
+.vscode/
 
 ### VisualStudioCode Patch ###
 # Ignore all local history of files
