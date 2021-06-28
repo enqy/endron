@@ -1,42 +1,13 @@
-=x: 9
-=y: 2
+$update_position -@| %fn((f32 f32) f32) -| {
+    $pos -@| f32
+    $dt -@| f32
 
-$z<f32> : 1
-$v<array<u32>> : [1, 2, 3, 4]
-
-
-$testfn<fn<
-    $.arg<f32>
-    ~T
->> : {
-    ~.arg
+    $pos | #{ _ + $dt * `10 }
 }
 
-// This is just a test comment
-/// This is just a test doc comment
-$AddData<struct<
-    $.T<type>
->> : {
-    $.x<T>
-    $.y<T>
+$dt -@| f32
+$pos -@| f32 -| `1
 
-    $add<fn<
-        $.self<AddData>
-        ~T
-    >> : {
-        $ix<T> : .self.x
-
-        #+ ix : .self.y
-    }
-}
-
-$w<AddData<
-    $.T : u32
->> : {
-    $.x : 2
-    $.y : 3
-}
-
-$main<fn> : {
-    $sum<w.T> : !w.add
+$ -^{_ > 10}| {
+    $pos | !update_position(_ $dt)
 }
