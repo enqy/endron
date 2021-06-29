@@ -8,6 +8,6 @@ $update_position -@| %fn((f32 f32) f32) -| {
 $dt -@| f32
 $pos -@| f32 -| `1
 
-$ -^{_ > 10}| {
+$ -^{_ > `10}| {
     $pos | !update_position(_ $dt)
 }
