@@ -1,3 +1,5 @@
+@std.debug.print
+
 $x<i32>{9}
 $y<i32>{2}
 $z<f32>{1.1}
@@ -38,4 +40,5 @@ $w<!AddData<
 
 $main<!fn>{
     $sum<.w.T>{!w.add}
+    !print{.sum}
 }
