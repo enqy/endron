@@ -1,44 +1,49 @@
-@std.debug.print
+@(do_something, $block)
+~(do_something, {
+    ~(_, {
+        @(x, $num)
+        @(y, $num)
+        @(z, $num)
+        @(s, $str)
+    })
 
-$x<i32>{9}
-$y<i32>{2}
-$z<f32>{1.1}
+    !(print, (_.x, _.y, _.z, _.s))
 
-$v<!array<u32>>{[1, 2, 3, 4]}
+    @(__, $num)
+    ~(__, x + y + z)
+})
 
-$testfn<!fn<
-    $.arg<f32>
-    ~f32
->>{
-    ~.arg
-}
+@(Storage, $block)
+~(Storage, {
+    @(stored, $num)
+    @(capacity, $num)
+})
 
-// This is just a test comment
-/// This is just a test doc comment
-$AddData<!struct<
-    $.T<~type>
->>{
-    $.x<.T>
-    $.y<.T>
+@(main, $block)
+~(main, {
+    @(storage, Storage)
+    ~(storage.stored, 10)
+    ~(storage.capacity, 100)
 
-    $add<!fn<
-        $.self<!AddData<.T>>
-        ~T
-    >>{
-        $ix<.T>{.self.x}
+    @(something, $num)
+    ~(something, !(do_something, (storage.stored, storage.capacity, 100, "Hello, world!")))
+    !(print, (something))
 
-        ~#+{[ix, self.y]}
-    }
-}
+    ?(#(>, (something, 100)), {
+        !(print, ("Something is greater than 100"))
+    }, {
+        !(print, ("Something is less than 100"))
+    })
 
-$w<!AddData<
-    $.T{u32}
->>{
-    $.x{2}
-    $.y{3}
-}
-
-$main<!fn>{
-    $sum<.w.T>{!w.add}
-    !print{.sum}
-}
+    ^(something, (
+        (100, {
+            !(print, ("Something is equal to 100"))
+        }),
+        (101, {
+            !(print, ("Something is equal to 101"))
+        }),
+        (102, {
+            !(print, ("Something is equal to 102"))
+        }),
+    ))
+})
