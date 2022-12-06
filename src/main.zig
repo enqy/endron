@@ -1,24 +1,37 @@
 const std = @import("std");
+const log = std.log.scoped(.main);
+
+const tokenizer = @import("tokenizer.zig");
 
 pub fn main() !void {
-    // Prints to stderr (it's a shortcut based on `std.io.getStdErr()`)
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
-    // stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    const stdout_file = std.io.getStdOut().writer();
-    var bw = std.io.bufferedWriter(stdout_file);
-    const stdout = bw.writer();
+    var args = std.process.args();
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+    _ = args.skip();
+    const filename = args.next() orelse return error.InvalidFilename;
+    log.info("filename: {s}", .{filename});
 
-    try bw.flush(); // don't forget to flush!
-}
+    const file = try std.fs.cwd().openFile(filename, .{});
+    defer file.close();
+    const source = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(source);
 
-test "simple test" {
-    var list = std.ArrayList(i32).init(std.testing.allocator);
-    defer list.deinit(); // try commenting this out and see if zig detects the memory leak!
-    try list.append(42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+    const tokens = try tokenizer.tokenize(allocator, source);
+    var current_line: usize = 0;
+    var current_column: usize = 0;
+    for (tokens) |token| {
+        while (current_line < token.line) : (current_line += 1) {
+            current_column = 0;
+            std.debug.print("\n", .{});
+        }
+        while (current_column < token.column) : (current_column += 1) {
+            std.debug.print(" ", .{});
+        }
+        current_column += token.end - token.start;
+        std.debug.print("{s}", .{source[token.start..token.end]});
+    }
+    defer allocator.free(tokens);
 }
