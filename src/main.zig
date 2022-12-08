@@ -26,14 +26,7 @@ pub fn main() !void {
     const detokenized = try tokenizer.detokenize(allocator, source, tokens);
     defer allocator.free(detokenized);
 
-    log.info("tokenized: {any}", .{tokens});
-    log.info("detokenized: {s}", .{detokenized});
-
     var tree = try parser.parse(allocator, source, tokens);
     defer tree.deinit();
     try tree.root.render(std.io.getStdOut().writer(), 0);
-}
-
-comptime {
-    _ = @import("tokenizer.zig");
 }
