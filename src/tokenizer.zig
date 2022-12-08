@@ -62,6 +62,30 @@ pub fn tokenize(allocator: Allocator, source: []const u8) ![]const Token {
     }
 }
 
+pub fn detokenize(allocator: Allocator, source: []const u8, tokens: []const Token) ![]const u8 {
+    var str = std.ArrayList(u8).init(allocator);
+    errdefer str.deinit();
+
+    var current_line: usize = 0;
+    var current_column: usize = 0;
+
+    for (tokens) |token| {
+        while (current_line < token.line - 1) : (current_line += 1) {
+            current_column = 0;
+            try str.append('\n');
+        }
+
+        while (current_column < token.column - 1) : (current_column += 1) {
+            try str.append(' ');
+        }
+
+        current_column += token.end - token.start;
+        try str.appendSlice(source[token.start..token.end]);
+    }
+
+    return str.toOwnedSlice();
+}
+
 pub const Tokenizer = struct {
     source: []const u8,
     index: usize = 0,
