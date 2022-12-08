@@ -49,10 +49,10 @@ pub const Token = struct {
     };
 };
 
-pub fn tokenize(allocator: Allocator, source: []const u8) ![]const Token {
+pub fn tokenize(alloc: Allocator, source: []const u8) ![]const Token {
     var tokenizer = Tokenizer{
         .source = source,
-        .tokens = std.ArrayList(Token).init(allocator),
+        .tokens = try std.ArrayList(Token).initCapacity(alloc, source.len / 4),
     };
     errdefer tokenizer.tokens.deinit();
     while (true) {
@@ -308,7 +308,7 @@ pub const Tokenizer = struct {
                         self.index += 1;
                     },
                     else => {
-                        if (std.mem.eql(u8, self.source[res.start..self.index], "_")) res.kind = .underscore;
+                        if (self.source[res.start..self.index].len == 1 and self.source[res.start] == '_') res.kind = .underscore;
                         break;
                     },
                 },

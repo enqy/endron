@@ -7,7 +7,7 @@ const parser = @import("parser.zig");
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    const alloc = gpa.allocator();
 
     var args = std.process.args();
 
@@ -17,16 +17,13 @@ pub fn main() !void {
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
 
-    const source = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(source);
+    const source = try file.reader().readAllAlloc(alloc, std.math.maxInt(usize));
+    defer alloc.free(source);
 
-    const tokens = try tokenizer.tokenize(allocator, source);
-    defer allocator.free(tokens);
+    const tokens = try tokenizer.tokenize(alloc, source);
+    defer alloc.free(tokens);
 
-    const detokenized = try tokenizer.detokenize(allocator, source, tokens);
-    defer allocator.free(detokenized);
-
-    var tree = try parser.parse(allocator, source, tokens);
+    var tree = try parser.parse(alloc, source, tokens);
     defer tree.deinit();
     try tree.root.render(std.io.getStdOut().writer(), 0);
 }
