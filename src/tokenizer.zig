@@ -77,6 +77,7 @@ pub const Tokenizer = struct {
 
         string,
         zero,
+        minus,
         number,
         decimal,
 
@@ -243,10 +244,10 @@ pub const Tokenizer = struct {
                         break;
                     },
                     '-' => {
+                        state = .minus;
                         res.kind = Token.Kind.minus;
                         self.column += 1;
                         self.index += 1;
-                        break;
                     },
                     '*' => {
                         state = .asterisk;
@@ -284,6 +285,15 @@ pub const Tokenizer = struct {
                         if (std.mem.eql(u8, self.source[res.start..self.index], "_")) res.kind = .underscore;
                         break;
                     },
+                },
+                .minus => switch (c) {
+                    '0'...'9' => {
+                        state = .number;
+                        res.kind = .literal_number;
+                        self.column += 1;
+                        self.index += 1;
+                    },
+                    else => break,
                 },
                 .number => switch (c) {
                     '0'...'9' => {
