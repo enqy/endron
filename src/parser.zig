@@ -19,6 +19,12 @@ pub fn parse(alloc: Allocator, source: []const u8, tokens: []const Token) !*Tree
         .tokens = tokens,
     };
 
+    // skip initial comments
+    while (true) switch (tokens[parser.token_index].kind) {
+        .line_comment, .doc_comment => parser.token_index += 1,
+        else => break,
+    };
+
     const root = try parser.block(0);
 
     const tree = try parser.arena.create(Tree);
@@ -331,6 +337,7 @@ pub const Parser = struct {
         switch (self.tokens[token].kind) {
             .asterisk => {
                 _ = self.nextToken();
+                root -= 1;
                 while (self.tokens[self.peekToken()].kind == .asterisk) {
                     _ = self.nextToken();
                     root -= 1;
