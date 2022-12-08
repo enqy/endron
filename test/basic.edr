@@ -1,4 +1,4 @@
-@std;$fn,{|import;"std"}
+@std;$struct,{|import;"std"}
 @print;$fn,:std.print
 
 /// This function does something
