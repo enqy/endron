@@ -19,18 +19,20 @@ pub const Token = struct {
 
         lbrace,
         rbrace,
+        lparen,
+        rparen,
 
         comma,
         semicolon,
 
         caret,
         colon,
-        dollar,
         period,
         underscore,
 
         at,
         bang,
+        dollar,
         pipe,
         question_mark,
         tilde,
@@ -67,6 +69,7 @@ pub const Tokenizer = struct {
     column: usize = 0,
     tokens: std.ArrayList(Token),
 
+    // TODO: implement negative numbers
     const State = enum {
         start,
 
@@ -148,6 +151,18 @@ pub const Tokenizer = struct {
                         self.index += 1;
                         break;
                     },
+                    '(' => {
+                        res.kind = Token.Kind.lparen;
+                        self.column += 1;
+                        self.index += 1;
+                        break;
+                    },
+                    ')' => {
+                        res.kind = Token.Kind.rparen;
+                        self.column += 1;
+                        self.index += 1;
+                        break;
+                    },
                     ',' => {
                         res.kind = Token.Kind.comma;
                         self.column += 1;
@@ -172,12 +187,6 @@ pub const Tokenizer = struct {
                         self.index += 1;
                         break;
                     },
-                    '$' => {
-                        res.kind = Token.Kind.dollar;
-                        self.column += 1;
-                        self.index += 1;
-                        break;
-                    },
                     '.' => {
                         res.kind = Token.Kind.period;
                         self.column += 1;
@@ -193,6 +202,12 @@ pub const Tokenizer = struct {
                     },
                     '!' => {
                         res.kind = Token.Kind.bang;
+                        self.column += 1;
+                        self.index += 1;
+                        break;
+                    },
+                    '$' => {
+                        res.kind = Token.Kind.dollar;
                         self.column += 1;
                         self.index += 1;
                         break;
@@ -277,6 +292,7 @@ pub const Tokenizer = struct {
                     },
                     '.' => {
                         state = .decimal;
+                        res.kind = Token.Kind.literal_decimal;
                         self.column += 1;
                         self.index += 1;
                     },
@@ -294,6 +310,10 @@ pub const Tokenizer = struct {
                         self.column += 1;
                         self.index += 1;
                         break;
+                    },
+                    '\\' => {
+                        self.column += 2;
+                        self.index += 2;
                     },
                     '\n' => {
                         self.line += 1;
@@ -316,10 +336,10 @@ pub const Tokenizer = struct {
                 },
                 .line_comment => switch (c) {
                     '/' => {
+                        state = .doc_comment;
                         res.kind = Token.Kind.doc_comment;
                         self.column += 1;
                         self.index += 1;
-                        break;
                     },
                     '\n' => break,
                     else => {
@@ -348,6 +368,8 @@ pub const Tokenizer = struct {
         }
 
         res.end = self.index;
+        res.column += 1;
+        res.line += 1;
         return res;
     }
 };

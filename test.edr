@@ -1,44 +1,43 @@
-@std;$block ~std;{|import;"std"}
-@print;$block ~print;:std.print
+@std;$fn,{|import;"std"}
+@print;$fn,:std.print
 
-@do_something;$fn
-~do_something;{
+/// This function does something
+@do_something;{$fn;{
     @x;$num
     @y;$num
     @z;$num
     @s;$str
-},$num,{
-    !:^print;:_.x,:_.y,:_.z,:_.s
+},$num},{
+    !:^print;x,y,z,s
 
     // blocks implicitly return the result of the last meta operation
-    #+;:_.x,:_.y,:_.z
+    #+;x,y,z
 }
 
-@Storage;$struct
-~Storage;{
+@Storage;$type,{$struct;{
     @stored;$num
     @capacity;$num
-}
+}}
 
-@main;$fn
-~main;{},$void,{
-    @storage;:^Storage
-    ~:storage.stored;10
-    ~:storage.capacity;100
+@main;{$fn;{},$void},{
+    @storage;:^Storage,{
+        ~stored;10.0
+        ~capacity;100
+    }
 
     @result;$num
-    ~result;{!do_something;:storage.stored,:storage.capacity,100,"Hello, world!"}
+    ~result;{!:^do_something;:*storage.stored,:*storage.capacity,100,"Hello, world!"}
 
     !:^print;:storage.stored
     !:^print;:storage.capacity
 
-    ?result;100,{
+    ?{#=;:*result,100};{
         !:^print;"Result is 100"
     },{
         !:^print;"Result is not 100"
     }
 
-    ?{#>;result,100},{
+    ?{#>;:*result,100};{
         !:^print;"Result is greater than 100"
     },{
         !:^print;"Result is not greater than 100"
