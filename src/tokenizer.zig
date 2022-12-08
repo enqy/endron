@@ -107,7 +107,9 @@ pub const Tokenizer = struct {
 
         slash,
         line_comment,
+        line_comment_locked,
         doc_comment,
+        doc_comment_locked,
 
         asterisk,
     };
@@ -298,7 +300,7 @@ pub const Tokenizer = struct {
                         self.index += 1;
                         break;
                     },
-                    else => std.debug.panic("invalid character: {c} at {}:{}", .{ @truncate(u8, c), self.line, self.column }),
+                    else => std.debug.panic("invalid character: {c} at {}:{}", .{ c, self.line, self.column }),
                 },
                 .ident => switch (c) {
                     'a'...'z', 'A'...'Z', '0'...'9', '_' => {
@@ -377,11 +379,27 @@ pub const Tokenizer = struct {
                     },
                     '\n' => break,
                     else => {
+                        state = .line_comment_locked;
+                        self.column += 1;
+                        self.index += 1;
+                    },
+                },
+                .line_comment_locked => switch (c) {
+                    '\n' => break,
+                    else => {
                         self.column += 1;
                         self.index += 1;
                     },
                 },
                 .doc_comment => switch (c) {
+                    '\n' => break,
+                    else => {
+                        state = .doc_comment_locked;
+                        self.column += 1;
+                        self.index += 1;
+                    },
+                },
+                .doc_comment_locked => switch (c) {
                     '\n' => break,
                     else => {
                         self.column += 1;
