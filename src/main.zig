@@ -16,26 +16,24 @@ pub fn main() !void {
 
     const file = try std.fs.cwd().openFile(filename, .{});
     defer file.close();
+
     const source = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(source);
 
     const tokens = try tokenizer.tokenize(allocator, source);
     defer allocator.free(tokens);
-    // var current_line: usize = 0;
-    // var current_column: usize = 0;
-    // for (tokens) |token| {
-    //     while (current_line < token.line) : (current_line += 1) {
-    //         current_column = 0;
-    //         std.debug.print("\n", .{});
-    //     }
-    //     while (current_column < token.column) : (current_column += 1) {
-    //         std.debug.print(" ", .{});
-    //     }
-    //     current_column += token.end - token.start;
-    //     std.debug.print("{s}", .{source[token.start..token.end]});
-    // }
+
+    const detokenized = try tokenizer.detokenize(allocator, source, tokens);
+    defer allocator.free(detokenized);
+
+    log.info("tokenized: {any}", .{tokens});
+    log.info("detokenized: {s}", .{detokenized});
 
     var tree = try parser.parse(allocator, source, tokens);
     defer tree.deinit();
     try tree.root.render(std.io.getStdOut().writer(), 0);
+}
+
+comptime {
+    _ = @import("tokenizer.zig");
 }
