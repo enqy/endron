@@ -35,6 +35,7 @@ pub const Token = struct {
         dollar,
         pipe,
         question_mark,
+        percent,
         tilde,
 
         number_sign,
@@ -247,6 +248,12 @@ pub const Tokenizer = struct {
                     },
                     '?' => {
                         res.kind = Token.Kind.question_mark;
+                        self.column += 1;
+                        self.index += 1;
+                        break;
+                    },
+                    '%' => {
+                        res.kind = Token.Kind.percent;
                         self.column += 1;
                         self.index += 1;
                         break;

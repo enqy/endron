@@ -34,6 +34,7 @@ pub const Block = struct {
 
 pub const Scope = struct {
     root: i64,
+    upper: i64,
     path: []const Ident,
 
     pub fn render(self: *const Scope, writer: anytype, level: usize) !void {
@@ -45,8 +46,8 @@ pub const Scope = struct {
         }
 
         var j: i64 = 0;
-        while (j < self.root) : (j += 1) {
-            try writer.writeAll("*");
+        while (j < self.upper) : (j += 1) {
+            try writer.writeAll(".");
         }
 
         for (self.path) |ident| {
@@ -70,7 +71,7 @@ pub const Op = union(enum) {
 
     pub const Set = struct {
         cap: *Expr,
-        values: []const *Expr,
+        args: []const *Expr,
     };
 
     pub const Call = struct {
@@ -87,6 +88,12 @@ pub const Op = union(enum) {
         cond: *Expr,
         if_true: *Expr,
         if_false: *Expr,
+    };
+
+    pub const Loop = struct {
+        cond: *Expr,
+        body: *Expr,
+        early: ?*Expr,
     };
 
     pub const Alu = struct {
@@ -111,6 +118,7 @@ pub const Op = union(enum) {
     call: Call,
     builtin: Builtin,
     branch: Branch,
+    loop: Loop,
     alu: Alu,
 
     pub fn render(self: *const Op, writer: anytype, level: usize) !void {
@@ -146,8 +154,8 @@ pub const Op = union(enum) {
                 try writer.writeAll("Set:\n");
                 try op.cap.render(writer, level + 1);
                 try writer.writeAll(" =\n");
-                for (op.values) |value| {
-                    try value.render(writer, level + 2);
+                for (op.args) |arg| {
+                    try arg.render(writer, level + 2);
                 }
             },
             .call => |op| {
@@ -183,6 +191,20 @@ pub const Op = union(enum) {
                 try renderIndent(writer, level + 2);
                 try writer.writeAll("else:\n");
                 try op.if_false.render(writer, level + 3);
+            },
+            .loop => |op| {
+                try writer.writeAll("Loop:\n");
+                try op.cond.render(writer, level + 1);
+                try writer.writeAll("\n");
+                try renderIndent(writer, level + 2);
+                try writer.writeAll("body:\n");
+                try op.body.render(writer, level + 3);
+                if (op.early) |early| {
+                    try writer.writeAll("\n");
+                    try renderIndent(writer, level + 2);
+                    try writer.writeAll("early:\n");
+                    try early.render(writer, level + 3);
+                }
             },
             .alu => |op| {
                 try writer.writeAll("Alu:\n");
@@ -253,7 +275,9 @@ pub const Literal = union(enum) {
         _ = level;
         switch (self.*) {
             .string => |lit| {
+                try writer.writeByte('"');
                 try writer.writeAll(lit);
+                try writer.writeByte('"');
             },
             .number => |lit| {
                 try writer.print("{}", .{lit});

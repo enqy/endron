@@ -76,6 +76,7 @@ pub const Parser = struct {
         if (try self.opCall(level)) |o| return o;
         if (try self.opBuiltin(level)) |o| return o;
         if (try self.opBranch(level)) |o| return o;
+        if (try self.opLoop(level)) |o| return o;
         if (try self.opAlu(level)) |o| return o;
         std.debug.panic("unexpected `{s}` at {}:{}", .{ self.getTokenSource(self.token_index), self.tokens[self.token_index].line, self.tokens[self.token_index].column });
     }
@@ -143,21 +144,21 @@ pub const Parser = struct {
             std.debug.panic("expected `;` at {}:{}", .{ self.tokens[self.token_index].line, self.tokens[self.token_index].column });
         };
 
-        var values = std.ArrayList(*ast.Expr).init(self.arena);
-        defer values.deinit();
+        var args = std.ArrayList(*ast.Expr).init(self.arena);
+        defer args.deinit();
 
-        try values.append(try self.expr(level));
+        try args.append(try self.expr(level));
 
         var maybe_comma_token = self.peekToken();
         while (self.tokens[maybe_comma_token].kind == .comma) {
             _ = self.nextToken();
-            try values.append(try self.expr(level));
+            try args.append(try self.expr(level));
             maybe_comma_token = self.peekToken();
         }
 
         return ast.Op{ .set = .{
             .cap = cap,
-            .values = try values.toOwnedSlice(),
+            .args = try args.toOwnedSlice(),
         } };
     }
 
@@ -239,6 +240,32 @@ pub const Parser = struct {
         } };
     }
 
+    fn opLoop(self: *Parser, level: usize) !?ast.Op {
+        _ = self.eatToken(.percent) orelse return null;
+
+        const cond = try self.expr(level);
+
+        _ = self.eatToken(.semicolon) orelse {
+            std.debug.panic("expected `;` at {}:{}", .{ self.tokens[self.token_index].line, self.tokens[self.token_index].column });
+        };
+
+        const body = try self.expr(level);
+
+        _ = self.eatToken(.comma) orelse return ast.Op{ .loop = .{
+            .cond = cond,
+            .body = body,
+            .early = null,
+        } };
+
+        const early = try self.expr(level);
+
+        return ast.Op{ .loop = .{
+            .cond = cond,
+            .body = body,
+            .early = early,
+        } };
+    }
+
     fn opAlu(self: *Parser, level: usize) !?ast.Op {
         _ = self.eatToken(.number_sign) orelse return null;
 
@@ -292,7 +319,8 @@ pub const Parser = struct {
             },
             .literal_string => {
                 token = self.nextToken();
-                e.* = ast.Expr{ .expr = .{ .literal = .{ .string = self.getTokenSource(token) } } };
+                const string = self.getTokenSource(token);
+                e.* = ast.Expr{ .expr = .{ .literal = .{ .string = string[1 .. string.len - 1] } } };
             },
             .literal_number => {
                 token = self.nextToken();
@@ -332,15 +360,17 @@ pub const Parser = struct {
         var path = std.ArrayList(ast.Ident).init(self.arena);
         defer path.deinit();
         var root: i64 = @intCast(i64, level);
+        var upper: i64 = 0;
 
         const token = self.peekToken();
         switch (self.tokens[token].kind) {
-            .asterisk => {
+            .period => {
                 _ = self.nextToken();
                 root -= 1;
-                while (self.tokens[self.peekToken()].kind == .asterisk) {
+                while (self.tokens[self.peekToken()].kind == .period) {
                     _ = self.nextToken();
                     root -= 1;
+                    upper += 1;
                 }
             },
             .caret => {
@@ -378,6 +408,7 @@ pub const Parser = struct {
 
         return ast.Scope{
             .root = root,
+            .upper = upper,
             .path = try path.toOwnedSlice(),
         };
     }
