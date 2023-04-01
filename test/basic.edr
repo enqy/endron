@@ -8,10 +8,10 @@
     @z;$num
     @s;$str
 },$num},{
-    !:^print;x,y,z,s
+    !:^print;:_.x,:_.y,:_.z,:_.s
 
     // blocks implicitly return the result of the last meta operation
-    #+;x,y,z
+    #+;:_.x,:_.y,:_.z
 }
 
 @Storage;$type,{$struct;{
@@ -20,10 +20,9 @@
 }}
 
 @main;{$fn;{},$void},{
-    @storage;$:^Storage,{
-        ~stored;-10.0
-        ~capacity;100
-    }
+    @storage;$:^Storage
+    ~:storage.stored;-10.0
+    ~:storage.capacity;100
 
     @result;$num
     ~result;{!:^do_something;:.storage.stored,:.storage.capacity,100,"Hello, world!"}
