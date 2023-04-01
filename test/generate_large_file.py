@@ -1,2 +1,2 @@
 with open("large_file.edr", "w") as f:
-    f.writelines(['@std;$fn,{|import;"std"}\n'] * 1000000)
+    f.writelines([f'@std{i};$fn,{{|import;"std"}}\n' for i in range(100000)])
