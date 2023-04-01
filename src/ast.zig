@@ -34,7 +34,7 @@ pub const Block = struct {
 
 pub const Scope = struct {
     root: i64,
-    upper: i64,
+    upper: usize,
     path: []const Ident,
 
     pub fn render(self: *const Scope, writer: anytype, level: usize) !void {
