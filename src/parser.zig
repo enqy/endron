@@ -360,7 +360,7 @@ pub const Parser = struct {
         var path = std.ArrayList(ast.Ident).init(self.arena);
         defer path.deinit();
         var root: i64 = @intCast(i64, level);
-        var upper: i64 = 0;
+        var upper: usize = 0;
 
         const token = self.peekToken();
         switch (self.tokens[token].kind) {
