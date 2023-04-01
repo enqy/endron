@@ -31,7 +31,7 @@ test "basic parsing" {
 test "branch parsing" {
     const source =
         \\// comment
-        \\?{#=;:*result,100};{
+        \\?{#=;:.result,100};{
         \\    !:^print;"Result is 100"
         \\},{
         \\    !:^print;"Result is not 100"
@@ -75,5 +75,5 @@ fn expectAst(alloc: std.mem.Allocator, source: []const u8, expected: []const u8)
     var actual = std.ArrayList(u8).init(alloc);
     defer actual.deinit();
     try tree.root.render(actual.writer(), 0);
-    try std.testing.expectEqualSlices(u8, expected, actual.items);
+    try std.testing.expectEqualStrings(expected, actual.items);
 }

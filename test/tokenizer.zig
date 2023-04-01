@@ -92,5 +92,5 @@ test "tokenizer.detokenize is inverse of tokenizer.tokenize" {
     const detokenized = try tokenizer.detokenize(alloc, source, tokens);
     defer alloc.free(detokenized);
 
-    try std.testing.expectEqualBytes(source, detokenized);
+    try std.testing.expectEqualStrings(source, detokenized);
 }
