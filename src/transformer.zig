@@ -108,7 +108,8 @@ pub const Transformer = struct {
                             try self.exprs.append(ir.Expr{ .nil = {} });
                         }
                         for (args, 0..) |arg, i| {
-                            self.exprs.items[first_arg_index + i] = try self.transformExprRaw(parent_block, arg);
+                            const transformed = try self.transformExprRaw(parent_block, arg);
+                            self.exprs.items[first_arg_index + i] = transformed;
                         }
                         break :blk ir.ArgsExpr{
                             .ptr = first_arg_index,
@@ -135,7 +136,8 @@ pub const Transformer = struct {
                     try self.exprs.append(ir.Expr{ .nil = {} });
                 }
                 for (op_set.args, 0..) |arg, i| {
-                    self.exprs.items[first_arg_index + i] = try self.transformExprRaw(parent_block, arg);
+                    const transformed = try self.transformExprRaw(parent_block, arg);
+                    self.exprs.items[first_arg_index + i] = transformed;
                 }
                 const args_expr = ir.ArgsExpr{
                     .ptr = first_arg_index,
@@ -160,7 +162,8 @@ pub const Transformer = struct {
                     try self.exprs.append(ir.Expr{ .nil = {} });
                 }
                 for (op_call.args, 0..) |arg, i| {
-                    self.exprs.items[first_arg_index + i] = try self.transformExprRaw(parent_block, arg);
+                    const transformed = try self.transformExprRaw(parent_block, arg);
+                    self.exprs.items[first_arg_index + i] = transformed;
                 }
                 const args_expr = ir.ArgsExpr{
                     .ptr = first_arg_index,
@@ -185,7 +188,8 @@ pub const Transformer = struct {
                     try self.exprs.append(ir.Expr{ .nil = {} });
                 }
                 for (op_builtin.args, 0..) |arg, i| {
-                    self.exprs.items[first_arg_index + i] = try self.transformExprRaw(parent_block, arg);
+                    const transformed = try self.transformExprRaw(parent_block, arg);
+                    self.exprs.items[first_arg_index + i] = transformed;
                 }
                 const args_expr = ir.ArgsExpr{
                     .ptr = first_arg_index,
