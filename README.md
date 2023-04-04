@@ -1,4 +1,4 @@
-programming language endgame.
+An experimental programming language.
 
 ## Example
 
@@ -13,10 +13,10 @@ programming language endgame.
     @z;$num
     @s;$str
 },$num},{
-    !:^print;x,y,z,s
+    !:^print;:_.x,:_.y,:_.z,:_.s
 
     // blocks implicitly return the result of the last meta operation
-    #+;x,y,z
+    #+;:_.x,:_.y,:_.z
 }
 
 @Storage;$type,{$struct;{
@@ -25,24 +25,29 @@ programming language endgame.
 }}
 
 @main;{$fn;{},$void},{
-    @storage;$:^Storage,{
-        ~stored;-10.0
-        ~capacity;100
-    }
+    @storage;$:^Storage
+    ~:storage.stored;-10.0
+    ~:storage.capacity;100
 
     @result;$num
-    ~result;{!:^do_something;:*storage.stored,:*storage.capacity,100,"Hello, world!"}
+    ~result;{!:^do_something;:.storage.stored,:.storage.capacity,100,"Hello, world!"}
 
     !:^print;:storage.stored
     !:^print;:storage.capacity
 
-    ?{#=;:*result,100};{
+    ?{#=;:.result,100};{
         !:^print;"Result is 100"
     },{
         !:^print;"Result is not 100"
     }
 
-    ?{#>;:*result,100};{
+    @i;$num,0
+    %{#<;:.i,100};{
+        !:^print;:.i
+        ~:.i;{#+;:..i,1}
+    }
+
+    ?{#>;:.result,100};{
         !:^print;"Result is greater than 100"
     },{
         !:^print;"Result is not greater than 100"
