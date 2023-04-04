@@ -51,7 +51,7 @@ pub const Scope = struct {
         }
 
         for (self.path) |ident| {
-            try writer.writeAll(".");
+            try writer.writeAll("::");
             try writer.writeAll(ident);
         }
     }

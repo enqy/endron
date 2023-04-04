@@ -87,11 +87,13 @@ pub const Transformer = struct {
                 if (op_decl.cap.expr != .ident) std.debug.panic("decl capture must be an ident!", .{});
                 if (parent_block.ident_map.get(op_decl.cap.expr.ident)) |_| std.debug.panic("ident `{s}` already exists in ident_map!", .{op_decl.cap.expr.ident});
                 try parent_block.ident_map.putNoClobber(op_decl.cap.expr.ident, value_expr);
+                const cap_expr = try self.transformExpr(parent_block, op_decl.cap);
 
                 try parent_block.ops.append(ir.Op{
                     .kind = .decl,
                     .data = .{
                         .decl = ir.Op.Data.Decl{
+                            .cap = cap_expr,
                             .type = type_expr,
                             .value = value_expr,
                         },
@@ -320,10 +322,13 @@ pub const Transformer = struct {
                 } else if (scope.root == 0) {
                     try path.append(ir.ScopePart{ .top = {} });
                 } else {
-                    try path.append(ir.ScopePart{ .up = scope.upper });
-                    for (scope.path) |part| {
-                        try path.append(ir.ScopePart{ .ident = part });
+                    for (0..scope.upper) |_| {
+                        try path.append(ir.ScopePart{ .up = {} });
                     }
+                }
+
+                for (scope.path) |part| {
+                    try path.append(ir.ScopePart{ .ident = part });
                 }
 
                 return ir.Expr{ .scope = .{ .path = path } };

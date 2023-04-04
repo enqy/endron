@@ -367,6 +367,7 @@ pub const Parser = struct {
             .period => {
                 _ = self.nextToken();
                 root -= 1;
+                upper += 1;
                 while (self.tokens[self.peekToken()].kind == .period) {
                     _ = self.nextToken();
                     root -= 1;
