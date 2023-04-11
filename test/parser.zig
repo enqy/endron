@@ -42,21 +42,21 @@ test "branch parsing" {
         \\  {
         \\    Alu:
         \\      eql(
-        \\        ^.result
+        \\        ^.::result
         \\        100
         \\      )
         \\  }
         \\    then:
         \\      {
         \\        Call:
-        \\          ^.print(
+        \\          ^::print(
         \\            "Result is 100"
         \\          )
         \\      }
         \\    else:
         \\      {
         \\        Call:
-        \\          ^.print(
+        \\          ^::print(
         \\            "Result is not 100"
         \\          )
         \\      }
