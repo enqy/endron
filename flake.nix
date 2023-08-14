@@ -19,7 +19,7 @@
       in {
         devShell = pkgs.mkShell {
           nativeBuildInputs = [
-            zig.packages.${system}.master
+            zig.packages.${system}."0.11.0"
           ];
         };
       }

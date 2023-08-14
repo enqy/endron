@@ -341,7 +341,7 @@ pub const Parser = struct {
                 e.* = ast.Expr{ .expr = .{ .block = .{ .ops = ops } } };
             },
             .colon => {
-                e.* = ast.Expr{ .expr = .{ .scope = try self.scope(level) } };
+                e.* = ast.Expr{ .expr = .{ .access = try self.access(level) } };
             },
             else => std.debug.panic("unexpected `{s}` at {}:{}", .{ self.getTokenSource(self.token_index), self.tokens[self.token_index].line, self.tokens[self.token_index].column }),
         }
@@ -349,7 +349,8 @@ pub const Parser = struct {
         return e;
     }
 
-    fn scope(self: *Parser, level: usize) !ast.Scope {
+    fn access(self: *Parser, level: usize) !ast.Access {
+        _ = level;
         _ = self.eatToken(.colon) orelse {
             std.debug.panic("expected `:` at {}:{}", .{
                 self.tokens[self.token_index].line,
@@ -359,38 +360,16 @@ pub const Parser = struct {
 
         var path = std.ArrayList(ast.Ident).init(self.arena);
         defer path.deinit();
-        var root: i64 = @intCast(i64, level);
-        var upper: usize = 0;
 
         const token = self.peekToken();
         switch (self.tokens[token].kind) {
             .period => {
+                // optional leading period
                 _ = self.nextToken();
-                root -= 1;
-                upper += 1;
-                while (self.tokens[self.peekToken()].kind == .period) {
-                    _ = self.nextToken();
-                    root -= 1;
-                    upper += 1;
-                }
             },
-            .caret => {
-                _ = self.nextToken();
-                root = 0;
-            },
-            .underscore => {
-                _ = self.nextToken();
-                root = -1;
-            },
-            .ident => {
-                _ = self.nextToken();
-                try path.append(self.getTokenSource(token));
-                root = @intCast(i64, level);
-            },
+            .ident => {},
             else => std.debug.panic("unexpected `{s}` at {}:{}", .{ self.getTokenSource(self.token_index), self.tokens[self.token_index].line, self.tokens[self.token_index].column }),
         }
-
-        _ = self.eatToken(.period);
 
         const root_path_token = self.eatToken(.ident) orelse {
             std.debug.panic("expected identifier after `{s}` at {}:{}", .{ self.getTokenSource(self.token_index - 1), self.tokens[self.token_index].line, self.tokens[self.token_index].column });
@@ -407,9 +386,7 @@ pub const Parser = struct {
             period_token = self.peekToken();
         }
 
-        return ast.Scope{
-            .root = root,
-            .upper = upper,
+        return ast.Access{
             .path = try path.toOwnedSlice(),
         };
     }

@@ -241,7 +241,7 @@ pub const Transformer = struct {
                 });
             },
             .alu => |op_alu| {
-                const func = @intToEnum(ir.Op.Data.Alu.Func, @enumToInt(op_alu.func));
+                const func: ir.Op.Data.Alu.Func = @enumFromInt(@intFromEnum(op_alu.func));
 
                 const first_arg_index = self.exprs.items.len;
                 for (op_alu.args) |_| {
@@ -309,29 +309,20 @@ pub const Transformer = struct {
                 };
             },
             .block => |block| {
+                const block_index = self.blocks.items.len;
                 try self.transformBlock(parent, block);
                 return ir.Expr{
-                    .block = self.blocks.items.len - 1,
+                    .block = block_index,
                 };
             },
-            .scope => |scope| {
-                var path = std.ArrayList(ir.ScopePart).init(self.alloc);
+            .access => |access| {
+                var path = std.ArrayList([]const u8).init(self.alloc);
 
-                if (scope.root == -1) {
-                    try path.append(ir.ScopePart{ .arg = {} });
-                } else if (scope.root == 0) {
-                    try path.append(ir.ScopePart{ .top = {} });
-                } else {
-                    for (0..scope.upper) |_| {
-                        try path.append(ir.ScopePart{ .up = {} });
-                    }
+                for (access.path) |part| {
+                    try path.append(part);
                 }
 
-                for (scope.path) |part| {
-                    try path.append(ir.ScopePart{ .ident = part });
-                }
-
-                return ir.Expr{ .scope = .{ .path = path } };
+                return ir.Expr{ .access = .{ .path = path } };
             },
         }
     }

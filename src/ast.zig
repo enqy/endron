@@ -32,26 +32,14 @@ pub const Block = struct {
     }
 };
 
-pub const Scope = struct {
-    root: i64,
-    upper: usize,
+pub const Access = struct {
     path: []const Ident,
 
-    pub fn render(self: *const Scope, writer: anytype, level: usize) !void {
+    pub fn render(self: *const Access, writer: anytype, level: usize) !void {
         _ = level;
-        if (self.root == -1) {
-            try writer.writeAll("_");
-        } else if (self.root == 0) {
-            try writer.writeAll("^");
-        }
-
-        var j: i64 = 0;
-        while (j < self.upper) : (j += 1) {
-            try writer.writeAll(".");
-        }
 
         for (self.path) |ident| {
-            try writer.writeAll("::");
+            try writer.writeAll(".");
             try writer.writeAll(ident);
         }
     }
@@ -237,7 +225,7 @@ pub const Expr = struct {
         ident: Ident,
         literal: Literal,
         block: Block,
-        scope: Scope,
+        access: Access,
     };
 
     expr: Inner,
@@ -257,7 +245,7 @@ pub const Expr = struct {
                 try renderIndent(writer, level);
                 try writer.writeAll("}");
             },
-            .scope => |expr| {
+            .access => |expr| {
                 try expr.render(writer, level);
             },
         }

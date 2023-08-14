@@ -32,4 +32,6 @@ pub fn main() !void {
     var ir = try transformer.transform(alloc, tree);
     defer ir.deinit();
     try ir.render(std.io.getStdOut().writer());
+
+    try codegen.generate(alloc, ir, std.io.getStdOut().writer());
 }

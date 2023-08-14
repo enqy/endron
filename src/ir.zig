@@ -206,32 +206,18 @@ pub const Op = struct {
     }
 };
 
-pub const ScopePart = union(enum) {
-    top: void,
-    arg: void,
-    up: void,
-    ident: []const u8,
-};
+pub const Access = struct {
+    path: std.ArrayList([]const u8),
 
-pub const Scope = struct {
-    path: std.ArrayList(ScopePart),
-
-    pub fn deinit(self: *Scope) void {
+    pub fn deinit(self: *Access) void {
         self.path.deinit();
     }
 
-    pub fn render(self: *const Scope, writer: anytype) !void {
-        try writer.writeAll("scope: ");
+    pub fn render(self: *const Access, writer: anytype) !void {
+        try writer.writeAll("access: ");
         for (self.path.items) |part| {
-            switch (part) {
-                .top => try writer.writeAll("^"),
-                .arg => try writer.writeAll("_"),
-                .up => try writer.writeAll("."),
-                .ident => {
-                    try writer.writeAll("::");
-                    try writer.writeAll(part.ident);
-                },
-            }
+            try writer.writeAll(".");
+            try writer.writeAll(part);
         }
     }
 };
@@ -241,12 +227,12 @@ pub const Expr = union(enum) {
     block: usize,
     cap: usize,
     builtin: usize,
-    scope: Scope,
+    access: Access,
     nil: void,
 
     pub fn deinit(self: *Expr) void {
         switch (self.*) {
-            .scope => self.scope.deinit(),
+            .access => self.access.deinit(),
             else => {},
         }
     }
@@ -257,7 +243,7 @@ pub const Expr = union(enum) {
             .block => try writer.print("block: {}", .{self.block}),
             .cap => try writer.print("cap: {}", .{self.cap}),
             .builtin => try writer.print("builtin: {}", .{self.builtin}),
-            .scope => try self.scope.render(writer),
+            .access => try self.access.render(writer),
             .nil => try writer.writeAll("nil"),
         }
     }
