@@ -56,6 +56,8 @@ pub const Block = struct {
     }
 
     pub fn render(self: *const Block, writer: anytype) !void {
+        try writer.writeAll("\n--- block ---\n");
+
         try writer.print("block {} {{\n", .{self.index});
         for (self.ops.items) |op| {
             try writer.writeAll("  ");
@@ -63,6 +65,13 @@ pub const Block = struct {
             try writer.writeAll("\n");
         }
         try writer.print("}}\n", .{});
+
+        try writer.writeAll("\n--- idents ---\n");
+
+        var iter = self.ident_map.iterator();
+        while (iter.next()) |entry| {
+            try writer.print("{} -> {s}\n", .{ entry.value_ptr.*, entry.key_ptr.* });
+        }
     }
 };
 
