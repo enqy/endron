@@ -4,7 +4,6 @@ const log = std.log.scoped(.main);
 const tokenizer = @import("tokenizer.zig");
 const parser = @import("parser.zig");
 const transformer = @import("transformer.zig");
-const codegen = @import("codegen.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -32,6 +31,4 @@ pub fn main() !void {
     var ir = try transformer.transform(alloc, tree);
     defer ir.deinit();
     try ir.render(std.io.getStdOut().writer());
-
-    try codegen.generate(alloc, ir, std.io.getStdOut().writer());
 }
